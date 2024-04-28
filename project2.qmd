@@ -1,0 +1,40 @@
+---
+title: "Project 2"
+author: "Tony, Shariq, Seung-Min"
+date: "28 April 2024"
+format:
+  html:
+    theme: cosmo
+    toc: true
+    number_sections: true
+---
+```{r load_libraries, message=FALSE, warning=FALSE}
+library(caret)  
+library(party) 
+library(dplyr)
+library(pls)  
+library(pdp) 
+library(Cubist)
+library(xgboost)
+library(randomForest)
+options(scipen=999)
+library(earth)
+library(Formula)
+library(plotmo)
+library(plotrix)
+library(DiagrammeR)
+library(AppliedPredictiveModeling)
+data(ChemicalManufacturingProcess)
+```
+
+#  header 1
+8.1. Recreate the simulated data from Exercise 7.2:
+```{r simulateData}
+library(mlbench)
+set.seed(200)
+simulated <- mlbench.friedman1(200, sd = 1)
+simulated <- cbind(simulated$x, simulated$y)
+simulated <- as.data.frame(simulated)
+colnames(simulated)[ncol(simulated)] <- "y"
+```
+
