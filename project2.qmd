@@ -1,5 +1,5 @@
 ---
-title: "Project 2"
+title: "ABC Beverage"
 author: "Tony, Shariq, Seung-Min"
 date: "28 April 2024"
 format:
@@ -9,32 +9,41 @@ format:
     number_sections: true
 ---
 ```{r load_libraries, message=FALSE, warning=FALSE}
-library(caret)  
-library(party) 
+library(readxl)
 library(dplyr)
-library(pls)  
-library(pdp) 
-library(Cubist)
-library(xgboost)
-library(randomForest)
-options(scipen=999)
-library(earth)
-library(Formula)
-library(plotmo)
-library(plotrix)
-library(DiagrammeR)
-library(AppliedPredictiveModeling)
-data(ChemicalManufacturingProcess)
+# library(caret)  
+# library(party) 
+# library(pls)  
+# library(pdp) 
+# library(Cubist)
+# library(xgboost)
+# library(randomForest)
+# options(scipen=999)
+# library(earth)
+# library(Formula)
+# library(plotmo)
+# library(plotrix)
+# library(DiagrammeR)
+# library(AppliedPredictiveModeling)
 ```
 
-#  header 1
-8.1. Recreate the simulated data from Exercise 7.2:
-```{r simulateData}
-library(mlbench)
-set.seed(200)
-simulated <- mlbench.friedman1(200, sd = 1)
-simulated <- cbind(simulated$x, simulated$y)
-simulated <- as.data.frame(simulated)
-colnames(simulated)[ncol(simulated)] <- "y"
+#  Explore data
+## load and prepare
+```{r loadData}
+github_url <- "https://github.com/tonythor/abc-beverage/raw/develop/data/"
+train_fn <- "StudentData_Training.xlsx"
+test_fn <- "StudentEvaluation_Test.xlsx"
+
+train_url <- paste0(github_url, train_fn) 
+test_url <- paste0(github_url, test_fn)
+
+download.file(train_url, destfile = train_fn, mode = "wb")
+download.file(test_url, destfile = test_fn, mode = "wb")
+train <- read_excel(train_fn)
+test <- read_excel(test_fn)
+
+file.remove(c(train_fn, test_fn))
+
 ```
+
 
