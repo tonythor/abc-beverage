@@ -8,6 +8,7 @@ format:
     toc: true
     number_sections: true
 ---
+
 ```{r load_libraries, message=FALSE, warning=FALSE}
 library(readxl)
 library(dplyr)
@@ -28,7 +29,13 @@ library(dplyr)
 ```
 
 #  Explore data
+
+stuff
+
 ## load and prepare
+
+stuff
+
 ```{r loadData}
 github_url <- "https://github.com/tonythor/abc-beverage/raw/develop/data/"
 train_fn <- "StudentData_Training.xlsx"
@@ -43,7 +50,8 @@ train <- read_excel(train_fn)
 test <- read_excel(test_fn)
 
 file.remove(c(train_fn, test_fn))
-
 ```
 
+
+Lets do some fancy stuff here.
 
