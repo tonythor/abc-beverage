@@ -46,8 +46,9 @@ docs/
 po/*~
 
 # RStudio Connect folder
-
 rsconnect/
 project2.html
 project2_files/*
+project2.rmarkdown
 
+*rsconnect* 

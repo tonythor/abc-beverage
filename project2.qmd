@@ -1,5 +1,5 @@
 ---
-title: "ABC Beverage"
+title: "ABC Beverage: Predictive PH Factors Research Spike"
 author: "Tony, Shariq, Seung-Min"
 date: "28 April 2024"
 format:
@@ -12,46 +12,193 @@ format:
 ```{r load_libraries, message=FALSE, warning=FALSE}
 library(readxl)
 library(dplyr)
-# library(caret)  
-# library(party) 
-# library(pls)  
-# library(pdp) 
-# library(Cubist)
-# library(xgboost)
-# library(randomForest)
-# options(scipen=999)
-# library(earth)
-# library(Formula)
-# library(plotmo)
-# library(plotrix)
-# library(DiagrammeR)
-# library(AppliedPredictiveModeling)
+library(ggplot2)
+library(corrplot)
+library(patchwork)
+library(caret)
+library(randomForest)
+library(shiny)
 ```
 
-#  Explore data
+In this research spike we will drill into our manufacturing process and attempt to build models to model PH balance in our product. 
 
-stuff
+# Data Overview 
+1. Our data is straight from the chain our manufacturing team
+2. This is not time series data, just a collection of points.
+3. Our sample consists of about 2800 entires, 33 columns. 
+4. Much of the data is about measured points at the time of bottling. 
+5. PH is the column we are going to try to model.
+6. The StudentEvaluation_Test, is not a train/test test dataset. It has no PH values in it. This dataset is for predicting when we're all done. We'll call it the predict_me dataset. 
 
-## load and prepare
+## Load Data
 
-stuff
-
-```{r loadData}
+```{r loadData, message=FALSE, warning=FALSE}
 github_url <- "https://github.com/tonythor/abc-beverage/raw/develop/data/"
 train_fn <- "StudentData_Training.xlsx"
-test_fn <- "StudentEvaluation_Test.xlsx"
-
+predict_me_fn <- "StudentEvaluation_Test.xlsx"
 train_url <- paste0(github_url, train_fn) 
-test_url <- paste0(github_url, test_fn)
-
+predict_me_url <- paste0(github_url, predict_me_fn)
 download.file(train_url, destfile = train_fn, mode = "wb")
-download.file(test_url, destfile = test_fn, mode = "wb")
-train <- read_excel(train_fn)
-test <- read_excel(test_fn)
+download.file(predict_me_url, destfile = predict_me_fn, mode = "wb")
 
-file.remove(c(train_fn, test_fn))
+# read in, clean by replacing all spaces and upper case column names
+# and mutate any nulls with a column average. 
+train <- read_excel(train_fn) %>%
+  rename_with(~ gsub(" ", "", .x) %>% tolower()) %>%
+  mutate(brandcodenumeric = as.numeric(as.factor(brandcode))) %>%
+  select(-brandcode)
+
+predict_me <- read_excel(predict_me_fn) %>%
+  rename_with(~ gsub(" ", "", .x) %>% tolower()) %>%
+  mutate(brandcodenumeric = as.numeric(as.factor(brandcode))) %>%
+  select(-brandcode)
+
+# make sure brand codes in one dataset match brand codes in the other. 
+# (like a=1 in both)
+brand_codes <- union(train$brandcodenumeric, predict_me$brandcodenumeric)
+train$brandcodenumeric <- factor(train$brandcodenumeric, levels = brand_codes)
+predict_me$brandcodenumeric <- factor(predict_me$brandcodenumeric, levels = brand_codes)
+
+file.remove(c(train_fn, predict_me_fn))
 ```
 
+## Basic visualizations 
 
-Lets do some fancy stuff here.
+PH seems to be fairly normally distributed.  After looking at a correlation chart, we might have some colinearity to deal with. 
 
+```{r basicCharts, fig.width=12, fig.height=6, message=FALSE, warning=FALSE}
+numeric_data <- train %>% select_if(is.numeric)
+
+#correlation matrix to df
+cor_matrix <- cor(numeric_data, use = "complete.obs")
+cor_df <- as.data.frame(as.table(cor_matrix))
+names(cor_df) <- c("Variable1", "Variable2", "Correlation")
+
+# Filter to include only higher correlations
+threshold <- 0.5
+cor_df <- cor_df %>%
+  filter(abs(Correlation) >= threshold, Variable1 != Variable2)
+
+cor_plot <- ggplot(cor_df, aes(x = Variable1, y = Variable2, fill = Correlation)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), axis.text.y = element_text(angle = 0)) +
+  labs(fill = "Correlation", title = "Filtered Correlation Matrix")
+
+# Check if pH is numeric and plot its distribution
+if("ph" %in% names(numeric_data)) {
+  ph_plot <- ggplot(numeric_data, aes(x = ph)) + 
+    geom_histogram(bins = 30, fill = "blue", color = "black") +
+    ggtitle("Distribution of pH Values") +
+    xlab("pH") +
+    ylab("Frequency")
+} else {
+  # Creating an empty plot if pH is not present or not numeric
+  ph_plot <- ggplot() +
+    geom_blank() +
+    ggtitle("No pH Data Available")
+}
+
+# Combine the plots side by side using patchwork
+combined_plot <- ph_plot + cor_plot
+
+# Display the combined plot
+print(combined_plot)
+```
+## Numeric Variable
+```{r iFrame, echo=FALSE, results='asis'}
+cat('<iframe src="https://afraser.shinyapps.io/shiny/" width="100%" height="600"></iframe>')
+```
+
+# Model Review
+Let's look through an assortment of the standard models and see if anything really fits.
+
+```{r modelCompare, message=FALSE, warning=FALSE}
+library(caret)
+library(randomForest)
+set.seed(200)  # for reproducibility
+
+train <- train %>%
+  mutate(across(where(is.numeric), ~ ifelse(is.na(.), mean(., na.rm = TRUE), .))) %>%
+  select(where(is.numeric))  # Ensure only numeric data is used
+
+# Split the train data into new training and testing sets
+set.seed(123)  # Ensure reproducibility
+indexes <- createDataPartition(train$ph, p = 0.75, list = FALSE)
+training_data <- train[indexes, ]
+testing_data <- train[-indexes, ]
+
+# Prepare predictor and response variables correctly
+training_data$x <- data.frame(sapply(training_data[, -which(names(training_data) == "ph")], as.numeric))
+training_data$y <- training_data$ph
+testing_data$x <- data.frame(sapply(testing_data[, -which(names(testing_data) == "ph")], as.numeric))
+testing_data$y <- testing_data$ph
+
+
+# KNN
+knnModel <- train(x = training_data$x, y = training_data$y,
+                  method = "knn",
+                  preProc = c("center", "scale"),
+                  tuneLength = 5)
+knnPred <- predict(knnModel, newdata = testing_data$x)
+knnMetrics <- postResample(pred = knnPred, obs = testing_data$y)
+
+# MARS
+marsModel <- train(x = training_data$x, y = training_data$y,
+                   method = "earth",
+                   preProc = c("center", "scale"),
+                   tuneLength = 5)
+marsPred <- predict(marsModel, newdata = testing_data$x)
+marsMetrics <- postResample(pred = marsPred, obs = testing_data$y)
+
+# Neural Net
+nnModel <- train(x = training_data$x, y = training_data$y,
+                 method = "nnet",
+                 preProcess = c("center", "scale"),
+                 tuneLength = 5, 
+                 trace = FALSE)
+nnPred <- predict(nnModel, newdata = testing_data$x)
+nnMetrics <- postResample(pred = nnPred, obs = testing_data$y)
+
+
+# SVM
+svmModel <- train(x = training_data$x, y = training_data$y,
+                  method = "svmRadial",
+                  preProcess = c("center", "scale"),
+                  tuneLength = 5)
+svmPred <- predict(svmModel, newdata = testing_data$x)
+svmMetrics <- postResample(pred = svmPred, obs = testing_data$y)
+
+
+#Random Forest, slightly tuned 
+trainControl <- trainControl(
+  method = "cv", #<- use cross validation 
+  number = 3,  # Reducing the number of cross-validation folds to 3 for faster execution
+  verboseIter = FALSE  # Turn off iteration verbosity
+)
+
+# Create a tuning grid
+tuneGrid <- expand.grid(
+  mtry = c(2, floor(sqrt(ncol(training_data$x))))  # Suggested mtry values
+)
+
+# Train the model using the random forest method
+rfModel <- train(
+  x = training_data$x,
+  y = training_data$y,
+  method = "rf",
+  trControl = trainControl,
+  tuneGrid = tuneGrid
+)
+rfPred <- predict(rfModel, newdata = testing_data$x)
+rfMetrics <- postResample(pred = rfPred, obs = testing_data$y)
+
+modelPerformance <- data.frame(
+  Model = c("KNN", "MARS", "Neural Network", "SVM", "Random Forest"),
+  RMSE = c(knnMetrics[1], marsMetrics[1], nnMetrics[1], svmMetrics[1], rfMetrics[1]),
+  Rsquared = c(knnMetrics[2], marsMetrics[2], nnMetrics[2], svmMetrics[2], rfMetrics[2]),
+  MAE = c(knnMetrics[3], marsMetrics[3], nnMetrics[3], svmMetrics[3], rfMetrics[3])
+)
+
+print(modelPerformance)
+```
