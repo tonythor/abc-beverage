@@ -52,3 +52,5 @@ project2_files/*
 project2.rmarkdown
 
 *rsconnect* 
+.DS_Store
+_extensions/*
