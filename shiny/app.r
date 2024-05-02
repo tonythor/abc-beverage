@@ -19,14 +19,12 @@ train <- read_excel(train_fn) %>%
   mutate(across(where(is.numeric), ~ ifelse(is.na(.), mean(., na.rm = TRUE), .)))
 
 ui <- fluidPage(
- # titlePanel("Boxplots for Numeric Variables"),
-  sidebarLayout(
-    sidebarPanel(
-      selectInput("variable", "Choose a variable:", 
-                  choices = names(train %>% select(where(is.numeric))))
-    ),
-    mainPanel(
-      plotOutput("boxPlot")
+  fluidRow(
+    column(6, offset = 3,  # Center the dropdown and plot in the middle
+           selectInput("variable", "View a variable boxplot:", 
+                       choices = names(train %>% select(where(is.numeric))),
+                       selected = names(train %>% select(where(is.numeric)))[1]),  # Default selection
+           plotOutput("boxPlot")
     )
   )
 )

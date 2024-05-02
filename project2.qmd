@@ -32,7 +32,7 @@ In this research spike we will drill into our manufacturing process and attempt 
 
 ## Load Data
 
-```{r loadData, message=FALSE, warning=FALSE}
+```{r loadData, message=FALSE, warning=FALSE, results='hide'}
 github_url <- "https://github.com/tonythor/abc-beverage/raw/develop/data/"
 train_fn <- "StudentData_Training.xlsx"
 predict_me_fn <- "StudentEvaluation_Test.xlsx"
@@ -105,15 +105,18 @@ combined_plot <- ph_plot + cor_plot
 # Display the combined plot
 print(combined_plot)
 ```
-## Numeric Variable
-```{r iFrame, echo=FALSE, results='asis'}
-cat('<iframe src="https://afraser.shinyapps.io/shiny/" width="100%" height="600"></iframe>')
+## Numeric variable boxpolots
+Launch the popup to review individual variable boxplots.
+
+```{r html_link, echo=FALSE, results='asis'}
+cat('<a href="https://afraser.shinyapps.io/shiny/" target="_blank" onclick="window.open(\'https://afraser.shinyapps.io/shiny/\', \'newwindow\', \'width=600,height=600\'); return false;">Launch popup</a>')
 ```
+
 
 # Model Review
 Let's look through an assortment of the standard models and see if anything really fits.
 
-```{r modelCompare, message=FALSE, warning=FALSE}
+```{r modelCompare, message=FALSE, warning=FALSE,eval=FALSE}
 library(caret)
 library(randomForest)
 set.seed(200)  # for reproducibility
