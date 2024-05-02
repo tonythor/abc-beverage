@@ -106,17 +106,16 @@ combined_plot <- ph_plot + cor_plot
 print(combined_plot)
 ```
 ## Numeric variable boxpolots
-Launch the popup to review individual variable boxplots.
 
 ```{r html_link, echo=FALSE, results='asis'}
-cat('<a href="https://afraser.shinyapps.io/shiny/" target="_blank" onclick="window.open(\'https://afraser.shinyapps.io/shiny/\', \'newwindow\', \'width=600,height=600\'); return false;">Launch popup</a>')
+cat('<a href="https://afraser.shinyapps.io/shiny/" target="_blank" onclick="window.open(\'https://afraser.shinyapps.io/shiny/\', \'newwindow\', \'width=600,height=600\'); return false;">Launch the popup</a> to review individual variable boxplots.')
 ```
 
 
 # Model Review
 Let's look through an assortment of the standard models and see if anything really fits.
 
-```{r modelCompare, message=FALSE, warning=FALSE,eval=FALSE}
+```{r modelCompare, message=FALSE, warning=FALSE}
 library(caret)
 library(randomForest)
 set.seed(200)  # for reproducibility
