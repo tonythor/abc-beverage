@@ -152,7 +152,7 @@ vif_values <- vif(lm_result)
 print(vif_values)
 ```
 
-Remove $carbpressure$, $fillerlevel$, $ballinglvl$, $balling$ from train and test dataframe
+Remove $carbpressure$, $fillerlevel$, $ballinglvl$, $balling$, and $alchrel$ from train and test dataframe
 
 ```{r message=FALSE, warning=FALSE}
 # Remove specific columns from the train data frame
