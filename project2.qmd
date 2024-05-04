@@ -197,17 +197,27 @@ sum(is.na(predict_me))
 ```{r message=FALSE, warning=FALSE}
 library(caret)
 
-preProc_bagImpute <- preProcess(train, method = "bagImpute")
-if (is.null(preProc_bagImpute)) {
-  stop("preProc_bagImpute is NULL. Preprocessing failed.")
-} else {
-  print("Preprocessing successful.")
-}
+# Define the list of columns excluding the 'ph' column
+columns_to_include <- setdiff(names(train), "ph")
+# Temporarily store the 'ph' column
+ph_column <- train$ph
+# Remove the 'ph' column
+train$ph <- NULL
+# Use the preProcess model to fill in missing values for the remaining data
+preProc_without_ph <- preProcess(train[columns_to_include], method = "bagImpute")
+# Use the preProcess model to fill in missing values
+train <- predict(preProc_without_ph, newdata = train[columns_to_include])
+# Restore the 'ph' column to the original data
+train$ph <- ph_column
+head(train)
 
-#train <- predict(preProc_bagImpute, newdata = train)
-
-preProc_bagImpute_p <- preProcess(predict_me, method = "bagImpute")
-#predict_me <- predict(preProc_bagImpute, predict_me)
+columns_to_include <- setdiff(names(predict_me), "ph")
+ph_column <- predict_me$ph
+predict_me$ph <- NULL
+preProc_without_ph <- preProcess(predict_me[columns_to_include], method = "bagImpute")
+predict_me <- predict(preProc_without_ph, newdata = predict_me[columns_to_include])
+predict_me$ph <- ph_column
+head(predict_me)
 ```
 
 ```{r message=FALSE, warning=FALSE}
