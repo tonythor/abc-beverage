@@ -111,6 +111,109 @@ print(combined_plot)
 cat('<a href="https://afraser.shinyapps.io/shiny/" target="_blank" onclick="window.open(\'https://afraser.shinyapps.io/shiny/\', \'newwindow\', \'width=600,height=600\'); return false;">Launch the popup</a> to review individual variable boxplots.')
 ```
 
+## Multicollinearity
+
+### VIF & linear regression
+
+```{r message=FALSE, warning=FALSE}
+library(car)
+
+lm_vif <- lm(ph ~ ., data = train)
+vif(lm_vif)
+
+summary(lm_vif)
+```
+
+```{r message=FALSE, warning=FALSE}
+library(PerformanceAnalytics)
+
+# List of selected variables based on GVIF criteria
+selected_vars <- c("carbpressure", "carbtemp", "fillerlevel", 
+                   "balling", "bowlsetpoint", "alchrel", "ballinglvl", "ph")
+
+# Filter the train data frame to only include the selected variables
+selected_data <- train[, selected_vars, drop = FALSE]
+
+# Check if the data is all numeric
+if(all(sapply(selected_data, is.numeric))) {
+  # Use chart.Correlation to create a correlation plot for the selected variables
+  chart.Correlation(selected_data, histogram=TRUE, pch=19)
+} else {
+  cat("Non-numeric columns are present in the selected data.")
+}
+```
+
+```{r message=FALSE, warning=FALSE}
+exclude_columns <- c("carbpressure", "fillerlevel", "ballinglvl", "balling", "alchrel")  
+
+# Create the model without the excluded columns
+lm_result <- lm(ph ~ ., data = train[, !colnames(train) %in% exclude_columns])
+vif_values <- vif(lm_result)
+print(vif_values)
+```
+
+Remove $carbpressure$, $fillerlevel$, $ballinglvl$, $balling$ from train and test dataframe
+
+```{r message=FALSE, warning=FALSE}
+# Remove specific columns from the train data frame
+train <- train[, !(colnames(train) %in% c("carbpressure", "fillerlevel", "ballinglvl", "balling","alchrel"))]
+
+# Remove specific columns from the predict_me data frame
+predict_me <- predict_me[, !(colnames(predict_me) %in% c("carbpressure", "fillerlevel", "ballinglvl", "balling", "alchrel"))]
+```
+
+## Missing Value
+
+### Non-linear
+
+Train dataset is a non-linear dataset. 
+```{r}
+train_complete <- na.omit(train)
+
+# Fit a linear model to the cleaned data
+model <- lm(ph ~ ., data = train_complete)
+
+# Calculate residuals and fitted values
+train_complete$residuals <- residuals(model)
+train_complete$fitted_values <- fitted(model)
+
+# Plotting the residuals against the fitted values
+ggplot(train_complete, aes(x = fitted_values, y = residuals)) +
+  geom_point(color = "slategray4") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "indianred", size = 3, linewidth = 1, boxlinewidth = 0.4) +
+  labs(x = "Fitted Values", y = "Residuals", title = "Residuals vs Fitted Values") +
+  theme_minimal()
+```
+
+### bagimpute: Bagged-Tree
+
+Fill in missing values with bagImpute. BagImpute can capture non-linear relationships among the variables in the data.
+
+```{r message=FALSE, warning=FALSE}
+sum(is.na(train))
+sum(is.na(predict_me))
+```
+
+```{r message=FALSE, warning=FALSE}
+library(caret)
+
+preProc_bagImpute <- preProcess(train, method = "bagImpute")
+if (is.null(preProc_bagImpute)) {
+  stop("preProc_bagImpute is NULL. Preprocessing failed.")
+} else {
+  print("Preprocessing successful.")
+}
+
+#train <- predict(preProc_bagImpute, newdata = train)
+
+preProc_bagImpute_p <- preProcess(predict_me, method = "bagImpute")
+#predict_me <- predict(preProc_bagImpute, predict_me)
+```
+
+```{r message=FALSE, warning=FALSE}
+sum(is.na(train))
+sum(is.na(predict_me))
+```
 
 # Model Review
 Let's look through an assortment of the standard models and see if anything really fits.
