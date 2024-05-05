@@ -317,3 +317,47 @@ modelPerformance <- data.frame(
 
 print(modelPerformance)
 ```
+## Importance Variables
+
+```{r}
+importance <- varImp(rfModel, scale = FALSE)
+importance
+```
+
+```{r}
+top15 <- importance$importance %>% 
+  as.data.frame() %>% 
+  mutate(Variable = row.names(.)) %>% 
+  slice_max(order_by = Overall, n = 15) %>%
+  mutate(Scaled = (Overall - min(Overall)) / (max(Overall) - min(Overall)) * 100) %>%
+  arrange(desc(Scaled))
+
+ggplot(top15, aes(x = reorder(Variable, Scaled), y = Scaled)) +
+  geom_bar(stat = "identity", fill = "#97c1a9", width = 0.7) +
+  coord_flip() + 
+  labs(x = "Variable", y = "Scaled Importance", title = "Top 15 Variable Importance") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.background = element_rect(fill = "white", color = "white"),
+    plot.background = element_rect(fill = "white", color = "white"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(colour = "black")
+  )
+```
+## Predict
+
+Predict **ph** in **predict_me** dataset
+
+```{r message=FALSE, warning=FALSE}
+predict_me_vars <- predict_me[, names(training_data$x)]
+
+ph_predictions <- predict(rfModel, newdata = predict_me_vars)
+
+ph_predictions_rounded <- round(ph_predictions, 1)
+
+predict_me$ph <- ph_predictions_rounded
+
+head(predict_me)
+```
