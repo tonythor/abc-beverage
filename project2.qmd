@@ -1,6 +1,6 @@
 ---
 title: "ABC Beverage: Predictive PH Factors Research Spike"
-author: "Tony, Shariq, Seung-Min"
+author: "Tony Fraser and Seung-min Song"
 date: "28 April 2024"
 format:
   html:
@@ -15,22 +15,36 @@ library(dplyr)
 library(ggplot2)
 library(corrplot)
 library(patchwork)
+library(shiny)
 library(caret)
 library(randomForest)
-library(shiny)
 ```
 
 In this research spike we will drill into our manufacturing process and attempt to build models to model PH balance in our product. 
 
+# Executive Summary
+This project aims to establish a robust predictive model for pH levels in the bottling process. We explored various modeling techniques, with the Random Forest model employing cross-validation emerging as the standout for its accuracy and resilience.
+
+Key outcomes from the model refinement include:
+
+* Model Optimization: By removing irrelevant predictors and effectively handling null values, we significantly improved the Random Forest model's Root Mean Square Error (RMSE) from 0.10671442 to 0.03417296.
+* Preprocessing: Proactively dropping records with null values stabilized our model, leading to more reliable predictions. Furthermore, streamlining the dataset to exclude less informative variables also enhanced performance.
+* Accuracy: The refined model was used to predict pH values on a separate test set of 268 records, achieving high accuracy.
+Future recommendations include:
+
+Imputation Review: Exploring different imputation strategies might yield slightly higher accuracy.
+
 # Data Overview 
-1. Our data is straight from the chain our manufacturing team
-2. This is not time series data, just a collection of points.
-3. Our sample consists of about 2800 entires, 33 columns. 
-4. Much of the data is about measured points at the time of bottling. 
-5. PH is the column we are going to try to model.
-6. The StudentEvaluation_Test, is not a train/test test dataset. It has no PH values in it. This dataset is for predicting when we're all done. We'll call it the predict_me dataset. 
+1. Our sample consists of about 2800 entries with 33 columns.
+2. This is not time-series data, just a collection of points.
+3. Much of the data is about measured points at the time of bottling.
+4. pH is the column we are going to try to model.
+5. The StudentEvaluation_Test is not a train/test dataset. It has no pH values in it. This dataset is for predicting when we’re all done. We’ll call it the predict_me dataset.
+6. On outliers: We’re choosing not to remove them because, in the end, Random Forest doesn’t seem to mind them. Also, this is about data points in bottling. Each one is important, and there doesn’t seem to be anything so extreme that it should be removed.
+7. On null columns: The RMSE for the Random Forest model with nulls dropped was 0.03417296, significantly lower than with all records included, which was 0.10671442. This model is more accurate when trained on a dataset without missing values.
 
 ## Load Data
+We moved data up to github and will load straight from there. Immediately on loading, column names will be cleaned and standardized. No spaces, all lower case, etc. 
 
 ```{r loadData, message=FALSE, warning=FALSE, results='hide'}
 github_url <- "https://github.com/tonythor/abc-beverage/raw/develop/data/"
@@ -43,10 +57,12 @@ download.file(predict_me_url, destfile = predict_me_fn, mode = "wb")
 
 # read in, clean by replacing all spaces and upper case column names
 # and mutate any nulls with a column average. 
-train <- read_excel(train_fn) %>%
+train_raw <- read_excel(train_fn) %>%
   rename_with(~ gsub(" ", "", .x) %>% tolower()) %>%
   mutate(brandcodenumeric = as.numeric(as.factor(brandcode))) %>%
   select(-brandcode)
+
+train <- train_raw %>%  filter_all(all_vars(!is.na(.)))
 
 predict_me <- read_excel(predict_me_fn) %>%
   rename_with(~ gsub(" ", "", .x) %>% tolower()) %>%
@@ -106,18 +122,20 @@ combined_plot <- ph_plot + cor_plot
 print(combined_plot)
 ```
 ## Numeric variable boxpolots
+You can review all the box and whisker plots for each numeric variable via this shiny app. 
 
 ```{r html_link, echo=FALSE, results='asis'}
 cat('<a href="https://afraser.shinyapps.io/shiny/" target="_blank" onclick="window.open(\'https://afraser.shinyapps.io/shiny/\', \'newwindow\', \'width=600,height=600\'); return false;">Launch the popup</a> to review individual variable boxplots.')
 ```
 
+# Modeling
+When you compare several of the more common models, random forest will by far better fit and predict this data. As well, random forest deals with collinear variables already so we should be able to forecast straight from the trianint dataset. Still though, let's look a little deeper before we predict. 
 
-# Model Review
-Let's look through an assortment of the standard models and see if anything really fits.
+## Model Overview
+Let's do some fit and predictions of several more common models, and see how they perform. Of the metrics at the bottom of this section, the one with the lowest RMSE will most likely be the one we should explore the most, espeically if it's considerably lower than the rest.
 
 ```{r modelCompare, message=FALSE, warning=FALSE}
-library(caret)
-library(randomForest)
+
 set.seed(200)  # for reproducibility
 
 train <- train %>%
@@ -162,7 +180,6 @@ nnModel <- train(x = training_data$x, y = training_data$y,
 nnPred <- predict(nnModel, newdata = testing_data$x)
 nnMetrics <- postResample(pred = nnPred, obs = testing_data$y)
 
-
 # SVM
 svmModel <- train(x = training_data$x, y = training_data$y,
                   method = "svmRadial",
@@ -171,20 +188,20 @@ svmModel <- train(x = training_data$x, y = training_data$y,
 svmPred <- predict(svmModel, newdata = testing_data$x)
 svmMetrics <- postResample(pred = svmPred, obs = testing_data$y)
 
-
-#Random Forest, slightly tuned 
+# Random Forest
+## features added in for importance after first round assesment. 
 trainControl <- trainControl(
-  method = "cv", #<- use cross validation 
-  number = 3,  # Reducing the number of cross-validation folds to 3 for faster execution
-  verboseIter = FALSE  # Turn off iteration verbosity
+  method = "cv", # <- this is how you get your model to cross validate!
+  number = 3, # <- three fold validation
+  verboseIter = FALSE,
+  savePredictions = "final",
+  returnResamp = "all"
 )
 
-# Create a tuning grid
 tuneGrid <- expand.grid(
-  mtry = c(2, floor(sqrt(ncol(training_data$x))))  # Suggested mtry values
+  mtry = c(2, floor(sqrt(ncol(training_data$x))))
 )
 
-# Train the model using the random forest method
 rfModel <- train(
   x = training_data$x,
   y = training_data$y,
@@ -195,12 +212,186 @@ rfModel <- train(
 rfPred <- predict(rfModel, newdata = testing_data$x)
 rfMetrics <- postResample(pred = rfPred, obs = testing_data$y)
 
+# Linear Regression
+lmModel <- train(x = training_data$x, y = training_data$y,
+                 method = "lm",
+                 preProcess = c("center", "scale"))
+lmPred <- predict(lmModel, newdata = testing_data$x)
+lmMetrics <- postResample(pred = lmPred, obs = testing_data$y)
+
+# Collecting all model performance metrics into a small df
 modelPerformance <- data.frame(
-  Model = c("KNN", "MARS", "Neural Network", "SVM", "Random Forest"),
-  RMSE = c(knnMetrics[1], marsMetrics[1], nnMetrics[1], svmMetrics[1], rfMetrics[1]),
-  Rsquared = c(knnMetrics[2], marsMetrics[2], nnMetrics[2], svmMetrics[2], rfMetrics[2]),
-  MAE = c(knnMetrics[3], marsMetrics[3], nnMetrics[3], svmMetrics[3], rfMetrics[3])
+  Model = c("KNN", "MARS", "Neural Network", "SVM", "Random Forest", "Linear Regression"),
+  RMSE = c(knnMetrics[1], marsMetrics[1], nnMetrics[1], svmMetrics[1], rfMetrics[1], lmMetrics[1]),
+  Rsquared = c(knnMetrics[2], marsMetrics[2], nnMetrics[2], svmMetrics[2], rfMetrics[2], lmMetrics[2]),
+  MAE = c(knnMetrics[3], marsMetrics[3], nnMetrics[3], svmMetrics[3], rfMetrics[3], lmMetrics[3])
 )
 
 print(modelPerformance)
 ```
+
+## Expanding Linear Regression
+Though the model performance datframe suggests we use Random Forest, let's first double check linear regression. We'll exclude columns carbpressure, fillerlevel, ballinglvl, balling, and alchrel, all of which exhibit collinearity. As well and in the interest of brevity, we'll omit the background work where we discerned those columns should be removed.
+
+### LR Model Performance
+First, let's just look on the same scale as above. We'll fit the model and data, clean up the model, predict, and then see how far off the model was with predictions. same as above. 
+
+```{r expandLinearRegression, message=FALSE, warning=FALSE}
+# Filter the train data frame to exclude specified columns
+train_filtered <- train[, !(colnames(train) %in% c("carbpressure", "fillerlevel", "ballinglvl", "balling", "alchrel"))]
+
+# Split the data into new training and testing sets based on the filtered train data
+set.seed(123)  # Ensure reproducibility
+indexes <- createDataPartition(train_filtered$ph, p = 0.75, list = FALSE)
+training_data_filtered <- train_filtered[indexes, ]
+testing_data_filtered <- train_filtered[-indexes, ]
+
+# Prepare predictor and response variables for the highly configured linear model
+training_data_filtered$x <- data.frame(sapply(training_data_filtered[, -which(names(training_data_filtered) == "ph")], as.numeric))
+training_data_filtered$y <- training_data_filtered$ph
+testing_data_filtered$x <- data.frame(sapply(testing_data_filtered[, -which(names(testing_data_filtered) == "ph")], as.numeric))
+testing_data_filtered$y <- testing_data_filtered$ph
+
+# Fit the Linear Regression model on the filtered dataset
+lmModelFiltered <- train(x = training_data_filtered$x, y = training_data_filtered$y,
+                         method = "lm",
+                         preProc = c("center", "scale"))
+
+# Predict and calculate metrics
+lmPredFiltered <- predict(lmModelFiltered, newdata = testing_data_filtered$x)
+lmMetricsFiltered <- postResample(pred = lmPredFiltered, obs = testing_data_filtered$y)
+
+# Add this LR metric
+modelPerformance <- rbind(modelPerformance, data.frame(
+  Model = "Linear Regression (Configured)",
+  RMSE = lmMetricsFiltered[1],
+  Rsquared = lmMetricsFiltered[2],
+  MAE = lmMetricsFiltered[3]
+))
+
+print(modelPerformance)
+
+```
+### LR coefficients plot
+Let's have a quick look at what LR thinks the more important variables are. 
+
+```{r lrplot, message=FALSE, warning=FALSE}
+coef_info <- coef(lmModelFiltered$finalModel)  # Extract model coefficients
+
+coef_df <- data.frame( # Convert to df
+  Variable = names(coef_info),
+  Coefficient = coef_info
+)
+
+coef_df <- coef_df[-1, ] # Remove the intercept
+
+library(ggplot2)
+ggplot(coef_df, aes(x = reorder(Variable, Coefficient), y = Coefficient, fill = Coefficient > 0)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Importance of Variables in LR Model",
+       x = "Variables",
+       y = "Coefficient Value") +
+  theme_minimal()
+```                  
+
+## Expanding Random Forest
+We know Random Forest is going to fit better, but before we predict, let's go through all the details and refine.
+
+### Feature Importance
+First, let's get a handle on which features seem the most important.
+
+```{r expandRandomForest, message=FALSE, warning=FALSE}
+importance_measures <- varImp(rfModel, scale = TRUE)
+plot(importance_measures, main = "Feature Importance in Random Forest Model")
+```
+### Removing irrelevant variables
+When we get rid of some of the extra and more irrelevant variables, Random Forest performs much better. We'll set a 25% threshold and show the columns we are removing. 
+
+```{r rfRemoveColummsAndRebuild, message=FALSE, warning=FALSE, results='hide'}
+# Function to clean and type
+clean_data <- function(data, vars_to_remove) {
+  data <- data[, !(names(data) %in% vars_to_remove)]
+  data <- as.data.frame(data)
+  data[] <- lapply(data, function(x) if(is.list(x)) unlist(x) else x)
+  return(data)
+}
+
+# important features
+importance_df <- as.data.frame(importance_measures$importance)
+importance_df$Variable <- rownames(importance_df)
+importance_df <- importance_df[order(importance_df$Overall), ]
+# print(importance_df)
+
+# cut off at less than 25%.
+cutoff <- quantile(importance_df$Overall, 0.25)
+variables_to_remove <- importance_df$Variable[importance_df$Overall <= cutoff]
+# print(variables_to_remove)
+
+# Clean, and remove non-predictor variables such as 'x' and 'y'
+training_data_updated <- clean_data(training_data, c(variables_to_remove, "x", "y"))
+sapply(training_data_updated, class)
+
+# Retrain the model with cleaned data
+rfModel_updated <- train(
+  x = training_data_updated,
+  y = training_data$y,
+  method = "rf",
+  trControl = trainControl,
+  tuneGrid = tuneGrid
+)
+
+# Prepare and clean prediction data
+predictor_data_for_model <- clean_data(testing_data, c(variables_to_remove, "x", "y"))
+sapply(predictor_data_for_model, class)  # Optional: Check classes of the prediction data columns
+
+# Make predictions and evaluate the model
+rfPred_updated <- predict(rfModel_updated, newdata = predictor_data_for_model)
+rfMetrics_updated <- postResample(pred = rfPred_updated, obs = testing_data$y)
+
+updated_model_performance <- data.frame(
+  Model = "Random Forest (w/ extra cols removed)",
+  RMSE = rfMetrics_updated[1],
+  Rsquared = rfMetrics_updated[2],
+  MAE = rfMetrics_updated[3]
+)
+
+modelPerformance <- rbind(modelPerformance, updated_model_performance)
+#Note that at this point, we now have two rf modles, rfModel and rfModelUpdated.
+```
+
+```{r}
+#Removed Variables
+print(variables_to_remove)
+print(modelPerformance)
+```
+
+### Imputation Review
+We did this project with both imputation and removal of null values. We vound that the RMSE was lower.
+
+```{r}
+# train_imputed <- train_raw %>% imputed
+```
+
+### Redsiduals Plot Review
+The residuals appear randomly distributed around the zero line which is ideal. This suggests that the model does not suffer from non-constant variance. As well, there are no apparent patterns or trends in the residuals, which implies that the linearity between predictors and target is reasonably satisfied.  
+
+```{r}
+predictions <- predict(rfModel_updated, newdata = predictor_data_for_model)
+residuals <- testing_data$y - predictions
+residuals_df <- data.frame(Predicted = predictions, Residuals = residuals)
+residuals_df <- na.omit(residuals_df)
+ggplot(residuals_df, aes(x = Predicted, y = Residuals)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Residual Plot", x = "Predicted Values", y = "Residuals")
+```
+
+### Prediction
+```{r}
+library(caret)
+library(dplyr)
+
+```
+
+
