@@ -337,13 +337,15 @@ tuneGrid2 <- expand.grid(
   mtry = c(2, floor(sqrt(ncol(training_data$x))))
 )
 
+n_tree = 2000
 # Retrain the model with cleaned data
 rfModel_updated <- train(
   x = training_data_updated,
   y = training_data$y,
   method = "rf",
   trControl = trainControl2,
-  tuneGrid = tuneGrid2
+  tuneGrid = tuneGrid2,
+  ntree = n_tree
 )
 
 # Prepare and clean prediction data
@@ -355,7 +357,7 @@ rfPred_updated <- predict(rfModel_updated, newdata = predictor_data_for_model)
 rfMetrics_updated <- postResample(pred = rfPred_updated, obs = testing_data$y)
 
 updated_model_performance <- data.frame(
-  Model = paste0("Random Forest (w/importance_factor : ", importance_factor, ")"),
+  Model = paste0("Random Forest (w/ importance_factor:ntree : ", importance_factor,":", n_tree,  ")"),
   RMSE = rfMetrics_updated[1],
   Rsquared = rfMetrics_updated[2],
   MAE = rfMetrics_updated[3]
