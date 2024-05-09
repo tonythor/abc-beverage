@@ -54,3 +54,4 @@ project2.rmarkdown
 *rsconnect* 
 .DS_Store
 _extensions/*
+*nogit*
