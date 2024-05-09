@@ -1,7 +1,7 @@
 ---
 title: "ABC Beverage: Predictive PH Factors Research Spike"
 author: "Tony Fraser and Seung-min Song"
-date: "28 April 2024"
+date: "8 May 2024"
 format:
   html:
     theme: cosmo
@@ -27,12 +27,10 @@ This project aims to establish a robust predictive model for pH levels in the bo
 
 Key outcomes from the model refinement include:
 
-* Model Optimization: By removing irrelevant predictors and effectively handling null values, we significantly improved the Random Forest model's Root Mean Square Error (RMSE) from 0.10671442 to 0.03417296.
-* Preprocessing: Proactively dropping records with null values stabilized our model, leading to more reliable predictions. Furthermore, streamlining the dataset to exclude less informative variables also enhanced performance.
-* Accuracy: The refined model was used to predict pH values on a separate test set of 268 records, achieving high accuracy.
-Future recommendations include:
-
-Imputation Review: Exploring different imputation strategies might yield slightly higher accuracy.
+* We tested several models before selecting Random Forest. Several were omitted from this final output.
+* Our best performing model is a Random Forest model with an RSquared of 0.6963521
+* All tested models perform better with null records dropped.
+* About 30% of the columns are irrelevant for random Forest.
 
 # Data Overview 
 1. Our sample consists of about 2800 entries with 33 columns.
@@ -40,8 +38,7 @@ Imputation Review: Exploring different imputation strategies might yield slightl
 3. Much of the data is about measured points at the time of bottling.
 4. pH is the column we are going to try to model.
 5. The StudentEvaluation_Test is not a train/test dataset. It has no pH values in it. This dataset is for predicting when we’re all done. We’ll call it the predict_me dataset.
-6. On outliers: We’re choosing not to remove them because, in the end, Random Forest doesn’t seem to mind them. Also, this is about data points in bottling. Each one is important, and there doesn’t seem to be anything so extreme that it should be removed.
-7. On null columns: The RMSE for the Random Forest model with nulls dropped was 0.03417296, significantly lower than with all records included, which was 0.10671442. This model is more accurate when trained on a dataset without missing values.
+6. On outliers: We’re choosing not to remove them. Random Forest doesn’t seem to mind outliers, also these are data points within bottling. Each one is important, and there doesn’t seem to be anything so extreme that it should be removed.
 
 ## Load Data
 We moved data up to github and will load straight from there. Immediately on loading, column names will be cleaned and standardized. No spaces, all lower case, etc. 
@@ -60,27 +57,23 @@ download.file(predict_me_url, destfile = predict_me_fn, mode = "wb")
 train_raw <- read_excel(train_fn) %>%
   rename_with(~ gsub(" ", "", .x) %>% tolower()) %>%
   mutate(brandcodenumeric = as.numeric(as.factor(brandcode))) %>%
-  select(-brandcode)
+  select(-brandcode) %>%
+  mutate(across(where(is.factor), ~ as.numeric(as.factor(.))))  # Convert all factors to numeric
 
 train <- train_raw %>%  filter_all(all_vars(!is.na(.)))
 
 predict_me <- read_excel(predict_me_fn) %>%
   rename_with(~ gsub(" ", "", .x) %>% tolower()) %>%
   mutate(brandcodenumeric = as.numeric(as.factor(brandcode))) %>%
-  select(-brandcode)
-
-# make sure brand codes in one dataset match brand codes in the other. 
-# (like a=1 in both)
-brand_codes <- union(train$brandcodenumeric, predict_me$brandcodenumeric)
-train$brandcodenumeric <- factor(train$brandcodenumeric, levels = brand_codes)
-predict_me$brandcodenumeric <- factor(predict_me$brandcodenumeric, levels = brand_codes)
+  select(-brandcode) %>% 
+  mutate(across(where(is.factor), ~ as.numeric(as.factor(.))))  # Convert all factors to numeric
 
 file.remove(c(train_fn, predict_me_fn))
 ```
 
 ## Basic visualizations 
 
-PH seems to be fairly normally distributed.  After looking at a correlation chart, we might have some colinearity to deal with. 
+PH seems to be fairly normally distributed.  After looking at a correlation chart, we might have some colinearity to deal depending on the model we select.
 
 ```{r basicCharts, fig.width=12, fig.height=6, message=FALSE, warning=FALSE}
 numeric_data <- train %>% select_if(is.numeric)
@@ -132,9 +125,9 @@ cat('<a href="https://afraser.shinyapps.io/shiny/" target="_blank" onclick="wind
 When you compare several of the more common models, random forest will by far better fit and predict this data. As well, random forest deals with collinear variables already so we should be able to forecast straight from the trianint dataset. Still though, let's look a little deeper before we predict. 
 
 ## Model Overview
-Let's do some fit and predictions of several more common models, and see how they perform. Of the metrics at the bottom of this section, the one with the lowest RMSE will most likely be the one we should explore the most, espeically if it's considerably lower than the rest.
+Let's do some fit and predictions of several more common models, and see how they perform. Of the metrics at the bottom of this section, the one with the best RSquared is the one we are likely to select.
 
-```{r modelCompare, message=FALSE, warning=FALSE}
+```{r modelCompare, , message=FALSE, warning=FALSE}
 
 set.seed(200)  # for reproducibility
 
@@ -144,7 +137,7 @@ train <- train %>%
 
 # Split the train data into new training and testing sets
 set.seed(123)  # Ensure reproducibility
-indexes <- createDataPartition(train$ph, p = 0.75, list = FALSE)
+indexes <- createDataPartition(train$ph, p = 0.8, list = FALSE)
 training_data <- train[indexes, ]
 testing_data <- train[-indexes, ]
 
@@ -153,7 +146,6 @@ training_data$x <- data.frame(sapply(training_data[, -which(names(training_data)
 training_data$y <- training_data$ph
 testing_data$x <- data.frame(sapply(testing_data[, -which(names(testing_data) == "ph")], as.numeric))
 testing_data$y <- testing_data$ph
-
 
 # KNN
 knnModel <- train(x = training_data$x, y = training_data$y,
@@ -231,10 +223,10 @@ print(modelPerformance)
 ```
 
 ## Expanding Linear Regression
-Though the model performance datframe suggests we use Random Forest, let's first double check linear regression. We'll exclude columns carbpressure, fillerlevel, ballinglvl, balling, and alchrel, all of which exhibit collinearity. As well and in the interest of brevity, we'll omit the background work where we discerned those columns should be removed.
+Though the model performance datframe suggests we use Random Forest, let's first double check linear regression because it is easy to understand. We'll exclude columns carbpressure, fillerlevel, ballinglvl, balling, and alchrel, all of which exhibit collinearity. As well and in the interest of brevity, we'll omit the background work where we discerned those columns should be removed. We'll do this just to see what another model thinks the important columns are. 
 
 ### LR Model Performance
-First, let's just look on the same scale as above. We'll fit the model and data, clean up the model, predict, and then see how far off the model was with predictions. same as above. 
+We'll make adjustments, fit clean up the model, predict, and then see how far off the model was with predictions. As the results show, this cleaning up doesn't make much of a difference. 
 
 ```{r expandLinearRegression, message=FALSE, warning=FALSE}
 # Filter the train data frame to exclude specified columns
@@ -306,9 +298,9 @@ importance_measures <- varImp(rfModel, scale = TRUE)
 plot(importance_measures, main = "Feature Importance in Random Forest Model")
 ```
 ### Removing irrelevant variables
-When we get rid of some of the extra and more irrelevant variables, Random Forest performs much better. We'll set a 25% threshold and show the columns we are removing. 
+When we get rid of some of the extra and more irrelevant variables, Random Forest performs much better. Before we refit this model, we'll set an importance threshold get rid of any column that doesn't help stabilize the model. 
 
-```{r rfRemoveColummsAndRebuild, message=FALSE, warning=FALSE, results='hide'}
+```{r rfRemoveColumms, message=FALSE, warning=FALSE, results='hide'}
 # Function to clean and type
 clean_data <- function(data, vars_to_remove) {
   data <- data[, !(names(data) %in% vars_to_remove)]
@@ -323,22 +315,35 @@ importance_df$Variable <- rownames(importance_df)
 importance_df <- importance_df[order(importance_df$Overall), ]
 # print(importance_df)
 
-# cut off at less than 25%.
-cutoff <- quantile(importance_df$Overall, 0.25)
+# cut off at less than importance_factor %
+importance_factor <- 0.3
+cutoff <- quantile(importance_df$Overall, importance_factor)
 variables_to_remove <- importance_df$Variable[importance_df$Overall <= cutoff]
 # print(variables_to_remove)
 
 # Clean, and remove non-predictor variables such as 'x' and 'y'
-training_data_updated <- clean_data(training_data, c(variables_to_remove, "x", "y"))
+training_data_updated <- clean_data(training_data, c(variables_to_remove, "x", "y", "ph"))
 sapply(training_data_updated, class)
+
+trainControl2 <- trainControl(
+  method = "cv", # <- this is how you get your model to cross validate!
+  number = 3, # <- three fold validation
+  verboseIter = FALSE,
+  savePredictions = "final",
+  returnResamp = "all"
+)
+
+tuneGrid2 <- expand.grid(
+  mtry = c(2, floor(sqrt(ncol(training_data$x))))
+)
 
 # Retrain the model with cleaned data
 rfModel_updated <- train(
   x = training_data_updated,
   y = training_data$y,
   method = "rf",
-  trControl = trainControl,
-  tuneGrid = tuneGrid
+  trControl = trainControl2,
+  tuneGrid = tuneGrid2
 )
 
 # Prepare and clean prediction data
@@ -350,33 +355,26 @@ rfPred_updated <- predict(rfModel_updated, newdata = predictor_data_for_model)
 rfMetrics_updated <- postResample(pred = rfPred_updated, obs = testing_data$y)
 
 updated_model_performance <- data.frame(
-  Model = "Random Forest (w/ extra cols removed)",
+  Model = paste0("Random Forest (w/importance_factor : ", importance_factor, ")"),
   RMSE = rfMetrics_updated[1],
   Rsquared = rfMetrics_updated[2],
   MAE = rfMetrics_updated[3]
 )
 
 modelPerformance <- rbind(modelPerformance, updated_model_performance)
+modelPerformance
 #Note that at this point, we now have two rf modles, rfModel and rfModelUpdated.
 ```
 
 ```{r}
-#Removed Variables
-print(variables_to_remove)
-print(modelPerformance)
-```
-
-### Imputation Review
-We did this project with both imputation and removal of null values. We vound that the RMSE was lower.
-
-```{r}
-# train_imputed <- train_raw %>% imputed
+print(variables_to_remove) #<- these were removed before we re-trained our model 
+print(modelPerformance) #<- a big improvement
 ```
 
 ### Redsiduals Plot Review
 The residuals appear randomly distributed around the zero line which is ideal. This suggests that the model does not suffer from non-constant variance. As well, there are no apparent patterns or trends in the residuals, which implies that the linearity between predictors and target is reasonably satisfied.  
 
-```{r}
+```{r residualsPlot}
 predictions <- predict(rfModel_updated, newdata = predictor_data_for_model)
 residuals <- testing_data$y - predictions
 residuals_df <- data.frame(Predicted = predictions, Residuals = residuals)
@@ -387,11 +385,67 @@ ggplot(residuals_df, aes(x = Predicted, y = Residuals)) +
   labs(title = "Residual Plot", x = "Predicted Values", y = "Residuals")
 ```
 
-### Prediction
-```{r}
-library(caret)
-library(dplyr)
+### Imputation
 
+Before we can predict, we need to do something with the missing fields from the predict_me data set. We'll use a simple linear regression model to find all those fields, go through the predictors, and fill those missing records out. Please note this is reusable code. 
+
+```{r lrImputeMethod, message=FALSE, warning=FALSE}
+impute_linear_regression <- function(data) {
+    # For each column ... 
+    for (col in names(data)) {
+        # is numeric and any missing values
+        if (is.numeric(data[[col]]) && any(is.na(data[[col]]))) {
+            # Identify predictor columns, excluding the current column and any columns with missing values
+            predictors <- setdiff(names(data), col)
+            predictors <- predictors[!sapply(data[predictors], function(x) any(is.na(x)))]
+
+            # Extract rows where the target column is not missing for training the model
+            train_data <- data[!is.na(data[[col]]), predictors, drop = FALSE]
+            train_target <- data[[col]][!is.na(data[[col]])]
+
+            # if predictors and sufficient data, fit a linear model
+            if (nrow(train_data) > 1 && length(predictors) > 0) {
+                lm_model <- lm(train_target ~ ., data = train_data)
+
+                # find indices of missing values in the target column
+                na_indices <- which(is.na(data[[col]]))
+                if (length(na_indices) > 0) {
+                    # predict missing values
+                    predictions <- predict(lm_model, newdata = data[na_indices, predictors, drop = FALSE])
+                    # Replace missing values with the predictions
+                    data[[col]][na_indices] <- predictions
+                }
+            } else {
+                # Use median imputation as a fallback when not enough data is available for regression
+                median_value <- median(train_target, na.rm = TRUE)
+                data[[col]][is.na(data[[col]])] <- median_value
+            }
+        }
+    }
+    return(data)
+}
+
+```
+
+## Prediction
+Now that we have an imputation strategy, we can predict. Please note in this research we have to Random Forest models, rfModel, and rfModel_updated. The updated one is the one where we further refined by adjusting and removing columns to get a better fit. We'll be using that one. 
+
+The output file will be saved to `with_predictions.csv`, and the prediction column is `predicted_ph.` 
+
+```{r rePredict, message=FALSE, warning=FALSE, results='hide'}
+all_vars_to_remove <- c("ph", variables_to_remove) 
+
+predict_me_filled <- predict_me %>% 
+  select(-all_of(all_vars_to_remove)) %>% 
+  impute_linear_regression()
+
+predicted_ph <- predict(rfModel_updated, newdata = predict_me_filled)
+predict_me_filled$predicted_ph <- round(predicted_ph, 5)
+
+predict_me_filled %>% ## one last cleanup. 
+  mutate_if(is.numeric, round, digits = 5)
+  
+write.csv(predict_me_filled, "with_predictions.csv", row.names = FALSE)
 ```
 
 
