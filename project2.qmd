@@ -68,6 +68,16 @@ predict_me <- read_excel(predict_me_fn) %>%
   select(-brandcode) %>% 
   mutate(across(where(is.factor), ~ as.numeric(as.factor(.))))  # Convert all factors to numeric
 
+train_imputed <- read_excel(train_fn) %>%
+  rename_with(~ gsub(" ", "", .x) %>% tolower()) %>%
+  mutate(brandcodenumeric = as.numeric(as.factor(brandcode))) %>%
+  select(-brandcode)
+
+# Create a data preprocessing object based on the remaining columns except the 'ph' column
+preProc_without_ph <- preProcess(train[, setdiff(names(train), "ph")], method = "bagImpute")
+train_imputed <- predict(preProc_without_ph, newdata = train[, setdiff(names(train), "ph")])
+train_imputed$ph <- train$ph
+
 file.remove(c(train_fn, predict_me_fn))
 ```
 
@@ -211,12 +221,53 @@ lmModel <- train(x = training_data$x, y = training_data$y,
 lmPred <- predict(lmModel, newdata = testing_data$x)
 lmMetrics <- postResample(pred = lmPred, obs = testing_data$y)
 
+
+train_imputed <- train_imputed %>%
+  mutate(across(where(is.numeric), ~ ifelse(is.na(.), mean(., na.rm = TRUE), .))) %>%
+  select(where(is.numeric))  # Ensure only numeric data is used
+
+set.seed(123) 
+trainIndex <- createDataPartition(train_imputed$ph, p = 0.75, list = FALSE)
+train_imputed_train <- train_imputed[trainIndex, ]
+train_imputed_test <- train_imputed[-trainIndex, ]
+
+# Prepare predictor and response variables correctly
+train_imputed_train$x <- data.frame(sapply(train_imputed_train[, -which(names(train_imputed_train) == "ph")], as.numeric))
+train_imputed_train$y <- train_imputed_train$ph
+train_imputed_test$x <- data.frame(sapply(train_imputed_test[, -which(names(train_imputed_test) == "ph")], as.numeric))
+train_imputed_test$y <- train_imputed_test$ph
+
+#Random Forest, slightly tuned 
+trainControl2 <- trainControl(
+  method = "cv", #<- use cross validation 
+  number = 3,  # Reducing the number of cross-validation folds to 3 for faster execution
+  verboseIter = FALSE  # Turn off iteration verbosity
+)
+
+# Create a tuning grid
+tuneGrid2 <- expand.grid(
+  mtry = c(2, floor(sqrt(ncol(training_data$x))))  # Suggested mtry values
+)
+
+# Train the model using the random forest method
+rfModel_imputed <- train(
+  x = train_imputed_train$x,
+  y = train_imputed_train$y,
+  method = "rf",
+  trControl = trainControl2,
+  tuneGrid = tuneGrid2
+)
+rfPred_imputed <- predict(rfModel_imputed, newdata = train_imputed_test$x)
+rfMetrics_imputed  <- postResample(pred = rfPred_imputed, obs = train_imputed_test$y)
+
+
+
 # Collecting all model performance metrics into a small df
 modelPerformance <- data.frame(
-  Model = c("KNN", "MARS", "Neural Network", "SVM", "Random Forest", "Linear Regression"),
-  RMSE = c(knnMetrics[1], marsMetrics[1], nnMetrics[1], svmMetrics[1], rfMetrics[1], lmMetrics[1]),
-  Rsquared = c(knnMetrics[2], marsMetrics[2], nnMetrics[2], svmMetrics[2], rfMetrics[2], lmMetrics[2]),
-  MAE = c(knnMetrics[3], marsMetrics[3], nnMetrics[3], svmMetrics[3], rfMetrics[3], lmMetrics[3])
+  Model = c("KNN", "MARS", "Neural Network", "SVM", "Random Forest", "Linear Regression", "Bagimpute RF"),
+  RMSE = c(knnMetrics[1], marsMetrics[1], nnMetrics[1], svmMetrics[1], rfMetrics[1], lmMetrics[1], rfMetrics_imputed[1]),
+  Rsquared = c(knnMetrics[2], marsMetrics[2], nnMetrics[2], svmMetrics[2], rfMetrics[2], lmMetrics[2], rfMetrics_imputed[2]),
+  MAE = c(knnMetrics[3], marsMetrics[3], nnMetrics[3], svmMetrics[3], rfMetrics[3], lmMetrics[3], rfMetrics_imputed[3] )
 )
 
 print(modelPerformance)
