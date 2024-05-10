@@ -445,6 +445,11 @@ ggplot(counts_data, aes(x = Stage, y = Count, fill = Dataset)) +
 ```
 
 # Generating Predictions 
+
+We'll predict not from the model where outliers are removed form the last section, but from further back hwere we only removed th columns. Removing outliers makes good fits and charts and such, but it might be too heavy handed. That should be a choice by the staekholders. 
+
+We'll follow the steps of first imputing missing data, then predicting, then writing a csv file. 
+
 ## Imputation
 
 Before we can predict, we need to do something with the missing fields from the predict_me data set. We'll use a simple linear regression model to find all those fields, go through the predictors, and fill those missing records out. Please note this is reusable code. 
