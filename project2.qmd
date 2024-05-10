@@ -1,5 +1,5 @@
 ---
-title: "ABC Beverage: Predictive PH Factors Research Spike"
+title: "ABC Beverage: Predictive pH Factors Research Spike"
 author: "Tony Fraser and Seung-min Song"
 date: "8 May 2024"
 format:
@@ -18,6 +18,7 @@ library(patchwork)
 library(shiny)
 library(caret)
 library(randomForest)
+library(tidyr)
 ```
 
 In this research spike we will drill into our manufacturing process and attempt to build models to model PH balance in our product. 
@@ -25,12 +26,18 @@ In this research spike we will drill into our manufacturing process and attempt 
 # Executive Summary
 This project aims to establish a robust predictive model for pH levels in the bottling process. We explored various modeling techniques, with the Random Forest model employing cross-validation emerging as the standout for its accuracy and resilience.
 
-Key outcomes from the model refinement include:
+## Key Outcomes
+* Our best-performing models are:
+    After model tuning: Random Forest with an R Squared of 0.6917606.
+    After implementing select outlier removals: Random Forest with an R Squared of 0.9763720.
+* Approximately 30% of the columns are either irrelevant or collinear.
+* Regarding Random Forest, an 80/20 test/train split yielded the best results.
+* We opted to make predictions based on the model without outliers moved. This can be easily swapped to the model where outliers are included.
 
-* We tested several models before selecting Random Forest. Several were omitted from this final output.
-* Our best performing model is a Random Forest model with an RSquared of 0.6963521
-* All tested models perform better with null records dropped.
-* About 30% of the columns are irrelevant for random Forest.
+## What's Next or Missing
+* We lack a data dictionary and industry knowledge, which are essential for understanding the meaning of these columns.
+* Some fields in the data are empty. We excluded them during model building, but we lack information to determine if this was the correct approach.
+* There is variance and outliers in the data, with some outliers being significant. To improve model stability, we removed a few training records but we are uncertain if this is a prudent decision. We kept both models in this study. 
 
 # Data Overview 
 1. Our sample consists of about 2800 entries with 33 columns.
@@ -54,12 +61,14 @@ download.file(predict_me_url, destfile = predict_me_fn, mode = "wb")
 
 # read in, clean by replacing all spaces and upper case column names
 # and mutate any nulls with a column average. 
+# train_raw has 2571 records.
 train_raw <- read_excel(train_fn) %>%
   rename_with(~ gsub(" ", "", .x) %>% tolower()) %>%
   mutate(brandcodenumeric = as.numeric(as.factor(brandcode))) %>%
   select(-brandcode) %>%
   mutate(across(where(is.factor), ~ as.numeric(as.factor(.))))  # Convert all factors to numeric
 
+#train has 2038 records
 train <- train_raw %>%  filter_all(all_vars(!is.na(.)))
 
 predict_me <- read_excel(predict_me_fn) %>%
@@ -114,17 +123,15 @@ combined_plot <- ph_plot + cor_plot
 # Display the combined plot
 print(combined_plot)
 ```
-## Numeric variable boxpolots
+## Shiny app: boxpolots
 You can review all the box and whisker plots for each numeric variable via this shiny app. 
 
 ```{r html_link, echo=FALSE, results='asis'}
 cat('<a href="https://afraser.shinyapps.io/shiny/" target="_blank" onclick="window.open(\'https://afraser.shinyapps.io/shiny/\', \'newwindow\', \'width=600,height=600\'); return false;">Launch the popup</a> to review individual variable boxplots.')
 ```
 
-# Modeling
-When you compare several of the more common models, random forest will by far better fit and predict this data. As well, random forest deals with collinear variables already so we should be able to forecast straight from the trianint dataset. Still though, let's look a little deeper before we predict. 
 
-## Model Overview
+# Models quick look
 Let's do some fit and predictions of several more common models, and see how they perform. Of the metrics at the bottom of this section, the one with the best RSquared is the one we are likely to select.
 
 ```{r modelCompare, , message=FALSE, warning=FALSE}
@@ -203,6 +210,7 @@ rfModel <- train(
 )
 rfPred <- predict(rfModel, newdata = testing_data$x)
 rfMetrics <- postResample(pred = rfPred, obs = testing_data$y)
+importance_measures <- varImp(rfModel, scale = TRUE)
 
 # Linear Regression
 lmModel <- train(x = training_data$x, y = training_data$y,
@@ -213,92 +221,31 @@ lmMetrics <- postResample(pred = lmPred, obs = testing_data$y)
 
 # Collecting all model performance metrics into a small df
 modelPerformance <- data.frame(
-  Model = c("KNN", "MARS", "Neural Network", "SVM", "Random Forest", "Linear Regression"),
+  Model = c("KNN", "MARS", "Neural Network", "SVM", "Random Forest (RF)", "Linear Regression (LR)"),
   RMSE = c(knnMetrics[1], marsMetrics[1], nnMetrics[1], svmMetrics[1], rfMetrics[1], lmMetrics[1]),
   Rsquared = c(knnMetrics[2], marsMetrics[2], nnMetrics[2], svmMetrics[2], rfMetrics[2], lmMetrics[2]),
   MAE = c(knnMetrics[3], marsMetrics[3], nnMetrics[3], svmMetrics[3], rfMetrics[3], lmMetrics[3])
 )
 
-print(modelPerformance)
+
+
+print(modelPerformance, row.names = FALSE)
 ```
 
-## Expanding Linear Regression
-Though the model performance datframe suggests we use Random Forest, let's first double check linear regression because it is easy to understand. We'll exclude columns carbpressure, fillerlevel, ballinglvl, balling, and alchrel, all of which exhibit collinearity. As well and in the interest of brevity, we'll omit the background work where we discerned those columns should be removed. We'll do this just to see what another model thinks the important columns are. 
-
-### LR Model Performance
-We'll make adjustments, fit clean up the model, predict, and then see how far off the model was with predictions. As the results show, this cleaning up doesn't make much of a difference. 
-
-```{r expandLinearRegression, message=FALSE, warning=FALSE}
-# Filter the train data frame to exclude specified columns
-train_filtered <- train[, !(colnames(train) %in% c("carbpressure", "fillerlevel", "ballinglvl", "balling", "alchrel"))]
-
-# Split the data into new training and testing sets based on the filtered train data
-set.seed(123)  # Ensure reproducibility
-indexes <- createDataPartition(train_filtered$ph, p = 0.75, list = FALSE)
-training_data_filtered <- train_filtered[indexes, ]
-testing_data_filtered <- train_filtered[-indexes, ]
-
-# Prepare predictor and response variables for the highly configured linear model
-training_data_filtered$x <- data.frame(sapply(training_data_filtered[, -which(names(training_data_filtered) == "ph")], as.numeric))
-training_data_filtered$y <- training_data_filtered$ph
-testing_data_filtered$x <- data.frame(sapply(testing_data_filtered[, -which(names(testing_data_filtered) == "ph")], as.numeric))
-testing_data_filtered$y <- testing_data_filtered$ph
-
-# Fit the Linear Regression model on the filtered dataset
-lmModelFiltered <- train(x = training_data_filtered$x, y = training_data_filtered$y,
-                         method = "lm",
-                         preProc = c("center", "scale"))
-
-# Predict and calculate metrics
-lmPredFiltered <- predict(lmModelFiltered, newdata = testing_data_filtered$x)
-lmMetricsFiltered <- postResample(pred = lmPredFiltered, obs = testing_data_filtered$y)
-
-# Add this LR metric
-modelPerformance <- rbind(modelPerformance, data.frame(
-  Model = "Linear Regression (Configured)",
-  RMSE = lmMetricsFiltered[1],
-  Rsquared = lmMetricsFiltered[2],
-  MAE = lmMetricsFiltered[3]
-))
-
-print(modelPerformance)
-
-```
-### LR coefficients plot
-Let's have a quick look at what LR thinks the more important variables are. 
-
-```{r lrplot, message=FALSE, warning=FALSE}
-coef_info <- coef(lmModelFiltered$finalModel)  # Extract model coefficients
-
-coef_df <- data.frame( # Convert to df
-  Variable = names(coef_info),
-  Coefficient = coef_info
-)
-
-coef_df <- coef_df[-1, ] # Remove the intercept
-
-library(ggplot2)
-ggplot(coef_df, aes(x = reorder(Variable, Coefficient), y = Coefficient, fill = Coefficient > 0)) +
-  geom_col() +
-  coord_flip() +
-  labs(title = "Importance of Variables in LR Model",
-       x = "Variables",
-       y = "Coefficient Value") +
-  theme_minimal()
-```                  
-
-## Expanding Random Forest
+# Expanding Random Forest
 We know Random Forest is going to fit better, but before we predict, let's go through all the details and refine.
 
-### Feature Importance
-First, let's get a handle on which features seem the most important.
+## Feature Importance
+First, let's get a handle on which features seem the most important. Wonderful.
 
 ```{r expandRandomForest, message=FALSE, warning=FALSE}
 importance_measures <- varImp(rfModel, scale = TRUE)
 plot(importance_measures, main = "Feature Importance in Random Forest Model")
 ```
-### Removing irrelevant variables
-When we get rid of some of the extra and more irrelevant variables, Random Forest performs much better. Before we refit this model, we'll set an importance threshold get rid of any column that doesn't help stabilize the model. 
+## Removing irrelevant columns
+We have a bunch of columns that confuse the model becuase they are irrlevant. Before we refit this model, we'll set an importance threshold to help us get rid of all those columns. Then, we'll build a new model, refit, and see how well it performs. 
+
+Not bad. It's over 69%. If we were rounding, it'd be good enough.
 
 ```{r rfRemoveColumms, message=FALSE, warning=FALSE, results='hide'}
 # Function to clean and type
@@ -319,11 +266,10 @@ importance_df <- importance_df[order(importance_df$Overall), ]
 importance_factor <- 0.3
 cutoff <- quantile(importance_df$Overall, importance_factor)
 variables_to_remove <- importance_df$Variable[importance_df$Overall <= cutoff]
-# print(variables_to_remove)
 
-# Clean, and remove non-predictor variables such as 'x' and 'y'
 training_data_updated <- clean_data(training_data, c(variables_to_remove, "x", "y", "ph"))
-sapply(training_data_updated, class)
+# check the data types of variables after cleaning and removal.
+# sapply(training_data_updated, class)
 
 trainControl2 <- trainControl(
   method = "cv", # <- this is how you get your model to cross validate!
@@ -338,7 +284,6 @@ tuneGrid2 <- expand.grid(
 )
 
 n_tree = 2000
-# Retrain the model with cleaned data
 rfModel_updated <- train(
   x = training_data_updated,
   y = training_data$y,
@@ -348,33 +293,39 @@ rfModel_updated <- train(
   ntree = n_tree
 )
 
-# Prepare and clean prediction data
+# prepare and clean prediction data
 predictor_data_for_model <- clean_data(testing_data, c(variables_to_remove, "x", "y"))
-sapply(predictor_data_for_model, class)  # Optional: Check classes of the prediction data columns
+# sapply(predictor_data_for_model, class)  # Optional: Check classes of the prediction data columns
 
 # Make predictions and evaluate the model
 rfPred_updated <- predict(rfModel_updated, newdata = predictor_data_for_model)
 rfMetrics_updated <- postResample(pred = rfPred_updated, obs = testing_data$y)
 
 updated_model_performance <- data.frame(
-  Model = paste0("Random Forest (w/ importance_factor:ntree : ", importance_factor,":", n_tree,  ")"),
+  Model = paste0("RF (if:ntree ", importance_factor,":", n_tree,  ")"),
   RMSE = rfMetrics_updated[1],
   Rsquared = rfMetrics_updated[2],
   MAE = rfMetrics_updated[3]
 )
 
+# Note that at this point, we now have two rf modles, rfModel and rf_model_updated.
+# Also, at this step, testing_updated and training_updated still have 1631/407 records.
+
 modelPerformance <- rbind(modelPerformance, updated_model_performance)
-modelPerformance
-#Note that at this point, we now have two rf modles, rfModel and rfModelUpdated.
+print(modelPerformance, row.names = FALSE)
+
 ```
 
-```{r}
+```{r outlierFiltering}
 print(variables_to_remove) #<- these were removed before we re-trained our model 
-print(modelPerformance) #<- a big improvement
+print(modelPerformance, row.names = FALSE) #<- a big improvement
 ```
 
-### Redsiduals Plot Review
+## Redsiduals Plot Review
 The residuals appear randomly distributed around the zero line which is ideal. This suggests that the model does not suffer from non-constant variance. As well, there are no apparent patterns or trends in the residuals, which implies that the linearity between predictors and target is reasonably satisfied.  
+
+There are some outliers. If this was our job, we'd be able to explain those. 
+
 
 ```{r residualsPlot}
 predictions <- predict(rfModel_updated, newdata = predictor_data_for_model)
@@ -387,7 +338,114 @@ ggplot(residuals_df, aes(x = Predicted, y = Residuals)) +
   labs(title = "Residual Plot", x = "Predicted Values", y = "Residuals")
 ```
 
-### Imputation
+
+## Outlier removal
+Random Forest deals reasonably well with outliers, but let's kick out just a few here to stabilize our model a litlte more. We'll use an IQR strategy and remove only the furthest out of bounds, the ones that are way way out, like 8X the distance between quartile 1 and quartile 3. 
+
+Randomly dropping records becuase they are outliers is not generally a preferred strategy, but we're already dropping a few records becuase they have null fields. Those might be valid records, we don't know. We also don't know if these records we're dropping are valid or not. We should look into each of them and figure out why, and try to account for that variance some other way.
+
+From a process perspective, let's use our previous test/train split with unimportant columns removed. All we'll do is remove a few of the most records furthest from the mean. 
+
+And obviously, this drastically stabilized the model as our performance table below shows.
+
+
+```{r}
+iqr_multiplier <- 5
+filter_outliers <- function(data) {
+  num_cols <- sapply(data, is.numeric)  # Identify numeric columns
+  before_count <- nrow(data)
+  data <- data %>%
+    filter(if_all(where(is.numeric), ~ {
+      q1 <- quantile(., 0.25, na.rm = TRUE)
+      q3 <- quantile(., 0.75, na.rm = TRUE)
+      iqr <- q3 - q1
+      # lower bound(-25)= 25 -( IQRMultipler=1 * 50) < assuming 25/50/75/100 quartile ranges 
+      lower_bound <- q1 - iqr_multiplier * iqr
+      upper_bound <- q3 + iqr_multiplier * iqr
+      . >= lower_bound & . <= upper_bound
+    }))
+  after_count <- nrow(data)
+  return(list(data = data, before = before_count, after = after_count))
+}
+
+# Apply the outlier filter to training and testing data
+filtered_training_data <- filter_outliers(training_data)
+filtered_testing_data <- filter_outliers(testing_data)
+
+# Extract data and counts
+training_data_filtered <- filtered_training_data$data
+testing_data_filtered <- filtered_testing_data$data
+train_before <- filtered_training_data$before
+train_after <- filtered_training_data$after
+test_before <- filtered_testing_data$before
+test_after <- filtered_testing_data$after
+
+# Proceed with the cleaning of data
+training_data_updated <- clean_data(training_data_filtered, c(variables_to_remove, "x", "y", "ph"))
+testing_data_for_model <- clean_data(testing_data_filtered, c(variables_to_remove, "x", "y"))
+
+# Ensure 'y' is still correctly aligned with your training data
+training_data_updated$y <- training_data_filtered$ph
+testing_data_for_model$y <- testing_data_filtered$ph
+
+# Train the Random Forest model with the cleaned and filtered data
+rfModel_filtered <- train(
+  x = training_data_updated,
+  y = training_data_updated$y,
+  method = "rf",
+  trControl = trainControl2,
+  tuneGrid = tuneGrid2,
+  ntree = n_tree
+)
+
+# Make predictions and evaluate the model
+rfPred_filtered <- predict(rfModel_filtered, newdata = testing_data_for_model)
+rfMetrics_filtered <- postResample(pred = rfPred_filtered, obs = testing_data_for_model$y)
+
+# Store performance metrics
+filtered_model_performance <- data.frame(
+  Model = paste0("RF Filtered NoOutliers (if:ntree ", importance_factor, ":", n_tree, ")"),
+  RMSE = rfMetrics_filtered[1],
+  Rsquared = rfMetrics_filtered[2],
+  MAE = rfMetrics_filtered[3]
+)
+
+modelPerformance <- rbind(modelPerformance, filtered_model_performance)
+print(modelPerformance, row.names = FALSE)
+```
+## Record Removal Visualization
+
+How many outliers do we have to remove to stabilize that model?
+
+```{r}
+
+# Create the data frame for plotting
+counts_data <- data.frame(
+  Stage = rep(c("Before", "After"), each = 2),
+  Dataset = rep(c("Training", "Testing"), 2),
+  Count = c(train_before, test_before, train_after, test_after)
+)
+
+# Adjust the order of levels for Stage to make 'Before' appear on the left and 'After' on the right
+counts_data$Stage <- factor(counts_data$Stage, levels = c("Before", "After"))
+
+# Plotting the bar chart with ggplot2
+library(ggplot2)
+ggplot(counts_data, aes(x = Stage, y = Count, fill = Dataset)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(
+    title = "Record Counts Before and After Outlier Filtering",
+    x = "",
+    y = "Record Count",
+    fill = "Dataset"
+  ) +
+  geom_text(aes(label = Count, group = Dataset), position = position_dodge(width = 0.9), vjust = -0.25)
+
+```
+
+# Generating Predictions 
+## Imputation
 
 Before we can predict, we need to do something with the missing fields from the predict_me data set. We'll use a simple linear regression model to find all those fields, go through the predictors, and fill those missing records out. Please note this is reusable code. 
 
@@ -429,7 +487,7 @@ impute_linear_regression <- function(data) {
 
 ```
 
-## Prediction
+## Predict
 Now that we have an imputation strategy, we can predict. Please note in this research we have to Random Forest models, rfModel, and rfModel_updated. The updated one is the one where we further refined by adjusting and removing columns to get a better fit. We'll be using that one. 
 
 The output file will be saved to `with_predictions.csv`, and the prediction column is `predicted_ph.` 
@@ -449,5 +507,4 @@ predict_me_filled %>% ## one last cleanup.
   
 write.csv(predict_me_filled, "with_predictions.csv", row.names = FALSE)
 ```
-
 
