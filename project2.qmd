@@ -106,21 +106,6 @@ ph_plot <- ggplot(numeric_data, aes(x = ph)) +
     xlab("pH") +
     ylab("Frequency")
   
-
-# check if pH is numeric and plot its distribution
-#if("ph" %in% names(numeric_data)) {
-#  ph_plot <- ggplot(numeric_data, aes(x = ph)) + 
-#    geom_histogram(bins = 30, fill = "blue", color = "black") +
-#    ggtitle("Distribution of pH Values") +
-#    xlab("pH") +
-#    ylab("Frequency")
-#} else {
-#  # Creating an empty plot if pH is not present or not numeric
-#  ph_plot <- ggplot() +
-#    geom_blank() +
-#    ggtitle("No pH Data Available")
-#}
-
 combined_plot <- ph_plot + cor_plot
 print(combined_plot)
 ```
@@ -191,7 +176,6 @@ svmPred <- predict(svmModel, newdata = testing_data$x)
 svmMetrics <- postResample(pred = svmPred, obs = testing_data$y)
 
 # Random Forest
-## features added in for importance after first round assesment. 
 trainControl <- trainControl(
   method = "cv", # <- this is how you get your model to cross validate!
   number = 3, # <- three fold validation
@@ -264,7 +248,6 @@ clean_data <- function(data, vars_to_remove) {
 importance_df <- as.data.frame(importance_measures$importance)
 importance_df$Variable <- rownames(importance_df)
 importance_df <- importance_df[order(importance_df$Overall), ]
-# print(importance_df)
 
 # cut off at less than importance_factor %
 importance_factor <- 0.3
@@ -273,7 +256,6 @@ variables_to_remove <- importance_df$Variable[importance_df$Overall <= cutoff]
 
 training_data_updated <- clean_data(training_data, c(variables_to_remove, "x", "y", "ph"))
 # check the data types of variables after cleaning and removal.
-# sapply(training_data_updated, class)
 
 trainControl2 <- trainControl(
   method = "cv", # <- this is how you get your model to cross validate!
@@ -299,14 +281,11 @@ rfModel_updated <- train(
 
 # prepare and clean prediction data
 predictor_data_for_model <- clean_data(testing_data, c(variables_to_remove, "x", "y"))
-# sapply(predictor_data_for_model, class)  # Optional: Check classes of the prediction data columns
 
-# Make predictions and evaluate the model
 rfPred_updated <- predict(rfModel_updated, newdata = predictor_data_for_model)
 rfMetrics_updated <- postResample(pred = rfPred_updated, obs = testing_data$y)
 
 print(variables_to_remove) #<- columns we removed before retraining 
-
 ```
  
 ## Model 1 Performance
@@ -378,11 +357,11 @@ filter_outliers <- function(data) {
   return(list(data = data, before = before_count, after = after_count))
 }
 
-# Apply the outlier filter to training and testing data
+# apply outlier filter
 filtered_training_data <- filter_outliers(training_data)
 filtered_testing_data <- filter_outliers(testing_data)
 
-# Extract data and counts
+#counts
 training_data_filtered <- filtered_training_data$data
 testing_data_filtered <- filtered_testing_data$data
 train_before <- filtered_training_data$before
@@ -390,15 +369,13 @@ train_after <- filtered_training_data$after
 test_before <- filtered_testing_data$before
 test_after <- filtered_testing_data$after
 
-# Proceed with the cleaning of data
 training_data_updated <- clean_data(training_data_filtered, c(variables_to_remove, "x", "y", "ph"))
 testing_data_for_model <- clean_data(testing_data_filtered, c(variables_to_remove, "x", "y"))
 
-# Ensure 'y' is still correctly aligned with your training data
+# ensure 'y' 
 training_data_updated$y <- training_data_filtered$ph
 testing_data_for_model$y <- testing_data_filtered$ph
 
-# Train the Random Forest model with the cleaned and filtered data
 rfModel_filtered <- train(
   x = training_data_updated,
   y = training_data_updated$y,
@@ -408,11 +385,9 @@ rfModel_filtered <- train(
   ntree = n_tree
 )
 
-# Make predictions and evaluate the model
 rfPred_filtered <- predict(rfModel_filtered, newdata = testing_data_for_model)
 rfMetrics_filtered <- postResample(pred = rfPred_filtered, obs = testing_data_for_model$y)
 
-# Store performance metrics
 filtered_model_performance <- data.frame(
   Model = paste0("RF Tuned FilteredOutliers (if:ntree ", importance_factor, ":", n_tree, ")"),
   RMSE = rfMetrics_filtered[1],
@@ -438,17 +413,14 @@ How many outliers do we have to remove to stabilize that model?  The more we rem
 
 ```{r recordRemovalVisualization}
 
-# Create the data frame for plotting
 counts_data <- data.frame(
   Stage = rep(c("Before", "After"), each = 2),
   Dataset = rep(c("Training", "Testing"), 2),
   Count = c(train_before, test_before, train_after, test_after)
 )
 
-# Adjust the order of levels for Stage to make 'Before' appear on the left and 'After' on the right
 counts_data$Stage <- factor(counts_data$Stage, levels = c("Before", "After"))
 
-# Plotting the bar chart with ggplot2
 library(ggplot2)
 ggplot(counts_data, aes(x = Stage, y = Count, fill = Dataset)) +
   geom_bar(stat = "identity", position = "dodge") +
@@ -475,6 +447,7 @@ We'll follow the steps of first imputing missing data, then predicting, then wri
 Before we can predict, we need to do something with the missing fields from the data set we are to predict ph for. We'll use a simple linear regression model to estimate all those missing fields. 
 
 ```{r lrImputeMethod, message=FALSE, warning=FALSE}
+
 impute_linear_regression <- function(data) {
     # For each column ... 
     for (col in names(data)) {
