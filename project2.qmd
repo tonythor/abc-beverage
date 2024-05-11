@@ -1,7 +1,7 @@
 ---
-title: "ABC Beverage: Predictive pH Factors Research Spike"
+title: "ABC Beverage: Predictive pH Factor Modeling"
 author: "Tony Fraser and Seung-min Song"
-date: "8 May 2024"
+date: "10 May 2024"
 format:
   html:
     theme: cosmo
@@ -21,34 +21,31 @@ library(randomForest)
 library(tidyr)
 ```
 
-In this research spike we will drill into our manufacturing process and attempt to build models to model PH balance in our product. 
-
 # Executive Summary
-This project aims to establish a robust predictive model for pH levels in the bottling process. We explored various modeling techniques, with the Random Forest model employing cross-validation emerging as the standout for its accuracy and resilience.
+This project aims to establish a robust predictive model for pH levels in the bottling process. We explored several modeling algorithms, some of which we included, but in the end we chose Random Forest using cross-validation because of accuracy and resilience.
 
 ## Key Outcomes
 * Our best-performing models are:
-    After model tuning: Random Forest with an R Squared of 0.6917606.
-    After implementing select outlier removals: Random Forest with an R Squared of 0.9763720.
-* Approximately 30% of the columns are either irrelevant or collinear.
-* Regarding Random Forest, an 80/20 test/train split yielded the best results.
-* We opted to make predictions based on the model without outliers moved. This can be easily swapped to the model where outliers are included.
+    1. After only model tuning: Random Forest with an R Squared of 0.6917606.
+    2. After discarding the most distant outliers from a conservative range: Random Forest with an R Squared of 0.9763720.
+* Approximately 30% of the columns are either irrelevant or collinear, and were removed.
+* Regarding split, in all tested cases, random forest is most stable with an 80/20 test/train split ratio. 
+* In order to predict all 267 records we were asked to predict, we chose to implement a linear regression imputation model to fill out the 675 missing fields. 
+* Our outcome file is called ph_predictions.csv.
 
 ## What's Next or Missing
-* We lack a data dictionary and industry knowledge, which are essential for understanding the meaning of these columns.
-* Some fields in the data are empty. We excluded them during model building, but we lack information to determine if this was the correct approach.
-* There is variance and outliers in the data, with some outliers being significant. To improve model stability, we removed a few training records but we are uncertain if this is a prudent decision. We kept both models in this study. 
+* We opted to make predictions with the model including the outliers.(The 69.1% model) This might not be the best prediction strategy, and most industry standards require models performing at 70% or better, but we believe we are makign the correct conservative decision. Predicting using our second model requires consensus and industry experience, neither of which we have. We did however make it a one line adjustment to switch between the 69% and the 97% model should assumptions and logic be approved.
+* There most certainly is feature engineering worth exploring, however we lack both a data dictionary and industry knowledge. Our strongest suggestion before furthering this research is for all parties to gain a better understanding of these columns.
+* Some fields in the training data are empty and we chose to exclude them from model building, e.g., we dropped nulls. Normally the correct coarse of action is to first find out why they are null and decide if they can be dropped or not. If we continue this assignment, this null question needs to be reviewed and decided upon.
 
 # Data Overview 
-1. Our sample consists of about 2800 entries with 33 columns.
-2. This is not time-series data, just a collection of points.
-3. Much of the data is about measured points at the time of bottling.
-4. pH is the column we are going to try to model.
-5. The StudentEvaluation_Test is not a train/test dataset. It has no pH values in it. This dataset is for predicting when we’re all done. We’ll call it the predict_me dataset.
-6. On outliers: We’re choosing not to remove them. Random Forest doesn’t seem to mind outliers, also these are data points within bottling. Each one is important, and there doesn’t seem to be anything so extreme that it should be removed.
+1. Our training consists of 2,571 entries with 33 columns.
+2. Our data to predict contains 267 similar records, but with the pH column emptied. We are to predict pH. 
+3. This is not time-series data, just a collection of points measured at the time of bottling.
+4. We built two usable Random Forest models for this study. The first model kept all records and was well tuned. The second model was tuned like the first, but we also removed distant outliers based on a conservative threshold set at five times the interquartile range. In the end, we moreved only 85 outlier records from 1600 training records. 
 
 ## Load Data
-We moved data up to github and will load straight from there. Immediately on loading, column names will be cleaned and standardized. No spaces, all lower case, etc. 
+We moved data up to github and will load straight from there. Immediately on loading, column names will be cleaned and standardized. No spaces, all lower case, etc.
 
 ```{r loadData, message=FALSE, warning=FALSE, results='hide'}
 github_url <- "https://github.com/tonythor/abc-beverage/raw/develop/data/"
@@ -82,7 +79,7 @@ file.remove(c(train_fn, predict_me_fn))
 
 ## Basic visualizations 
 
-PH seems to be fairly normally distributed.  After looking at a correlation chart, we might have some colinearity to deal depending on the model we select.
+pH seems to be fairly normally distributed.  After looking at a correlation chart, we might have some colinearity or irrelevent columsn to deal with. With just these two graphics, we should likely test several different goldsmiths and see which works best. 
 
 ```{r basicCharts, fig.width=12, fig.height=6, message=FALSE, warning=FALSE}
 numeric_data <- train %>% select_if(is.numeric)
@@ -92,7 +89,7 @@ cor_matrix <- cor(numeric_data, use = "complete.obs")
 cor_df <- as.data.frame(as.table(cor_matrix))
 names(cor_df) <- c("Variable1", "Variable2", "Correlation")
 
-# Filter to include only higher correlations
+# filter to include only higher correlations
 threshold <- 0.5
 cor_df <- cor_df %>%
   filter(abs(Correlation) >= threshold, Variable1 != Variable2)
@@ -103,24 +100,28 @@ cor_plot <- ggplot(cor_df, aes(x = Variable1, y = Variable2, fill = Correlation)
   theme(axis.text.x = element_text(angle = 90, hjust = 1), axis.text.y = element_text(angle = 0)) +
   labs(fill = "Correlation", title = "Filtered Correlation Matrix")
 
-# Check if pH is numeric and plot its distribution
-if("ph" %in% names(numeric_data)) {
-  ph_plot <- ggplot(numeric_data, aes(x = ph)) + 
+ph_plot <- ggplot(numeric_data, aes(x = ph)) + 
     geom_histogram(bins = 30, fill = "blue", color = "black") +
     ggtitle("Distribution of pH Values") +
     xlab("pH") +
     ylab("Frequency")
-} else {
-  # Creating an empty plot if pH is not present or not numeric
-  ph_plot <- ggplot() +
-    geom_blank() +
-    ggtitle("No pH Data Available")
-}
+  
 
-# Combine the plots side by side using patchwork
+# check if pH is numeric and plot its distribution
+#if("ph" %in% names(numeric_data)) {
+#  ph_plot <- ggplot(numeric_data, aes(x = ph)) + 
+#    geom_histogram(bins = 30, fill = "blue", color = "black") +
+#    ggtitle("Distribution of pH Values") +
+#    xlab("pH") +
+#    ylab("Frequency")
+#} else {
+#  # Creating an empty plot if pH is not present or not numeric
+#  ph_plot <- ggplot() +
+#    geom_blank() +
+#    ggtitle("No pH Data Available")
+#}
+
 combined_plot <- ph_plot + cor_plot
-
-# Display the combined plot
 print(combined_plot)
 ```
 ## Shiny app: boxpolots
@@ -131,8 +132,10 @@ cat('<a href="https://afraser.shinyapps.io/shiny/" target="_blank" onclick="wind
 ```
 
 
-# Models quick look
-Let's do some fit and predictions of several more common models, and see how they perform. Of the metrics at the bottom of this section, the one with the best RSquared is the one we are likely to select.
+# Review multiple models
+
+First we'll do some fit and predictions of several common models to see how they perform. And as this shows, Random Forest is the strongest modeling candidate. Please note this is not a complete list of all we tested.
+
 
 ```{r modelCompare, , message=FALSE, warning=FALSE}
 
@@ -142,13 +145,13 @@ train <- train %>%
   mutate(across(where(is.numeric), ~ ifelse(is.na(.), mean(., na.rm = TRUE), .))) %>%
   select(where(is.numeric))  # Ensure only numeric data is used
 
-# Split the train data into new training and testing sets
-set.seed(123)  # Ensure reproducibility
+# test and train
+set.seed(123)  
 indexes <- createDataPartition(train$ph, p = 0.8, list = FALSE)
 training_data <- train[indexes, ]
 testing_data <- train[-indexes, ]
 
-# Prepare predictor and response variables correctly
+# prepare predictor and response variables correctly
 training_data$x <- data.frame(sapply(training_data[, -which(names(training_data) == "ph")], as.numeric))
 training_data$y <- training_data$ph
 testing_data$x <- data.frame(sapply(testing_data[, -which(names(testing_data) == "ph")], as.numeric))
@@ -232,23 +235,24 @@ modelPerformance <- data.frame(
 print(modelPerformance, row.names = FALSE)
 ```
 
-# Expanding Random Forest
-We know Random Forest is going to fit better, but before we predict, let's go through all the details and refine.
+# RF Model 1, and Setup
+Now that we've selected a machine learning algorithm, we'll use this section to set up Random Forest. We'll figure out which columns to keep, how to set our hyper parameters, etc. We will not modify any data for this first model, we're just going to tune the infrastructure best we can. 
 
 ## Feature Importance
-First, let's get a handle on which features seem the most important. Wonderful.
+First, let's get a handle on which features seem the most important. We should see some of these less important columns later when we start removing unimprtant factors. 
 
 ```{r expandRandomForest, message=FALSE, warning=FALSE}
 importance_measures <- varImp(rfModel, scale = TRUE)
 plot(importance_measures, main = "Feature Importance in Random Forest Model")
 ```
-## Removing irrelevant columns
-We have a bunch of columns that confuse the model becuase they are irrlevant. Before we refit this model, we'll set an importance threshold to help us get rid of all those columns. Then, we'll build a new model, refit, and see how well it performs. 
+## Build Model and Remove Columns
 
-Not bad. It's over 69%. If we were rounding, it'd be good enough.
+Some of these less important columns confuse the model. Before we refit this model, we'll set an importance threshold to help us get rid of all those columns. Then, we'll build a new model, refit, and see how well it performs. 
+
+As you'll see at the end, not bad. We're over 69%. If we were rounding up, it'd be good enough. 
 
 ```{r rfRemoveColumms, message=FALSE, warning=FALSE, results='hide'}
-# Function to clean and type
+# clean and type and flatten
 clean_data <- function(data, vars_to_remove) {
   data <- data[, !(names(data) %in% vars_to_remove)]
   data <- as.data.frame(data)
@@ -301,6 +305,16 @@ predictor_data_for_model <- clean_data(testing_data, c(variables_to_remove, "x",
 rfPred_updated <- predict(rfModel_updated, newdata = predictor_data_for_model)
 rfMetrics_updated <- postResample(pred = rfPred_updated, obs = testing_data$y)
 
+print(variables_to_remove) #<- columns we removed before retraining 
+
+```
+ 
+## Model 1 Performance
+Let us now take a quick look at this last run and see how much better it performs. 
+Not bad, removing those columns and adjusting those hyper parameters made a big difference. 
+
+```{r}
+
 updated_model_performance <- data.frame(
   Model = paste0("RF (if:ntree ", importance_factor,":", n_tree,  ")"),
   RMSE = rfMetrics_updated[1],
@@ -308,24 +322,20 @@ updated_model_performance <- data.frame(
   MAE = rfMetrics_updated[3]
 )
 
-# Note that at this point, we now have two rf modles, rfModel and rf_model_updated.
-# Also, at this step, testing_updated and training_updated still have 1631/407 records.
-
 modelPerformance <- rbind(modelPerformance, updated_model_performance)
-print(modelPerformance, row.names = FALSE)
-
+print(modelPerformance, row.names = FALSE)  #<- a big improvement
 ```
 
 ```{r outlierFiltering}
-print(variables_to_remove) #<- these were removed before we re-trained our model 
-print(modelPerformance, row.names = FALSE) #<- a big improvement
+print(variables_to_remove) #<- columns we removed before retraining 
+
 ```
 
 ## Redsiduals Plot Review
-The residuals appear randomly distributed around the zero line which is ideal. This suggests that the model does not suffer from non-constant variance. As well, there are no apparent patterns or trends in the residuals, which implies that the linearity between predictors and target is reasonably satisfied.  
 
-There are some outliers. If this was our job, we'd be able to explain those. 
+This chart shows the differences between the pH we predicted in model 1, and the actual pH from the data set. Residual points appear randomly distributed around the zero line, which is ideal. This suggests that the model does not suffer from non-constant variance. As well, there are no apparent patterns or trends in the residuals, which implies that the linearity between predictors and target is reasonably satisfied.  
 
+There are some outliers though. 
 
 ```{r residualsPlot}
 predictions <- predict(rfModel_updated, newdata = predictor_data_for_model)
@@ -339,8 +349,8 @@ ggplot(residuals_df, aes(x = Predicted, y = Residuals)) +
 ```
 
 
-## Outlier removal
-Random Forest deals reasonably well with outliers, but let's kick out just a few here to stabilize our model a litlte more. We'll use an IQR strategy and remove only the furthest out of bounds, the ones that are way way out, like 8X the distance between quartile 1 and quartile 3. 
+# RF Model 2, with Outliers Removed
+Random Forest deals reasonably well with outliers, but let's kick out just a few here to stabilize our model a little more. We'll use an IQR strategy and remove only the furthest out of bounds, the ones that are way way out, like 8X the distance between quartile 1 and quartile 3. 
 
 Randomly dropping records becuase they are outliers is not generally a preferred strategy, but we're already dropping a few records becuase they have null fields. Those might be valid records, we don't know. We also don't know if these records we're dropping are valid or not. We should look into each of them and figure out why, and try to account for that variance some other way.
 
@@ -349,7 +359,7 @@ From a process perspective, let's use our previous test/train split with unimpor
 And obviously, this drastically stabilized the model as our performance table below shows.
 
 
-```{r}
+```{r buildModel2}
 iqr_multiplier <- 5
 filter_outliers <- function(data) {
   num_cols <- sapply(data, is.numeric)  # Identify numeric columns
@@ -410,14 +420,23 @@ filtered_model_performance <- data.frame(
   MAE = rfMetrics_filtered[3]
 )
 
+```
+## Model Performance
+
+As expected, removing some of these records causes a much better fit. This does not mean this model is better, to the contrary this might be worse, we simply don't know.
+
+```{r model2Performance}
 modelPerformance <- rbind(modelPerformance, filtered_model_performance)
 print(modelPerformance, row.names = FALSE)
 ```
+
+
 ## Record Removal Visualization
 
-How many outliers do we have to remove to stabilize that model?
+How many outliers do we have to remove to stabilize that model?  The more we remove, the more we over-fit. Our goal was to remove as little as reasonably possible.
 
-```{r}
+
+```{r recordRemovalVisualization}
 
 # Create the data frame for plotting
 counts_data <- data.frame(
@@ -444,15 +463,16 @@ ggplot(counts_data, aes(x = Stage, y = Count, fill = Dataset)) +
 
 ```
 
-# Generating Predictions 
+# Predictions
 
-We'll predict not from the model where outliers are removed form the last section, but from further back hwere we only removed th columns. Removing outliers makes good fits and charts and such, but it might be too heavy handed. That should be a choice by the staekholders. 
+We'll predict from model 1. Removing outliers makes good fits and charts and such, but it might be too heavy handed. That should be a choice by the staekholders. 
 
+To predict, we'll fist impute missing data, 
 We'll follow the steps of first imputing missing data, then predicting, then writing a csv file. 
 
 ## Imputation
 
-Before we can predict, we need to do something with the missing fields from the predict_me data set. We'll use a simple linear regression model to find all those fields, go through the predictors, and fill those missing records out. Please note this is reusable code. 
+Before we can predict, we need to do something with the missing fields from the data set we are to predict ph for. We'll use a simple linear regression model to estimate all those missing fields. 
 
 ```{r lrImputeMethod, message=FALSE, warning=FALSE}
 impute_linear_regression <- function(data) {
@@ -492,10 +512,8 @@ impute_linear_regression <- function(data) {
 
 ```
 
-## Predict
-Now that we have an imputation strategy, we can predict. Please note in this research we have to Random Forest models, rfModel, and rfModel_updated. The updated one is the one where we further refined by adjusting and removing columns to get a better fit. We'll be using that one. 
-
-The output file will be saved to `with_predictions.csv`, and the prediction column is `predicted_ph.` 
+## Build predictions
+Now that we have an imputation strategy, we can impute and predict.
 
 ```{r rePredict, message=FALSE, warning=FALSE, results='hide'}
 all_vars_to_remove <- c("ph", variables_to_remove) 
@@ -504,12 +522,20 @@ predict_me_filled <- predict_me %>%
   select(-all_of(all_vars_to_remove)) %>% 
   impute_linear_regression()
 
-predicted_ph <- predict(rfModel_updated, newdata = predict_me_filled)
+predicted_ph <- predict(rfModel_updated, newdata = predict_me_filled) #<- change this line to predict from 97% model.
 predict_me_filled$predicted_ph <- round(predicted_ph, 5)
 
+
+```
+
+### Persist as CSV
+
+As a last step, we'll save this this predicdtion set as a CSV file. One can expect from this spreadsheet, 267 records, no null fields in any record due to imputation, and a new column called predicted_ph.
+
+```{r persistAsCSV}
 predict_me_filled %>% ## one last cleanup. 
   mutate_if(is.numeric, round, digits = 5)
   
-write.csv(predict_me_filled, "with_predictions.csv", row.names = FALSE)
+write.csv(predict_me_filled, "ph_predictions.csv", row.names = FALSE)
 ```
 
