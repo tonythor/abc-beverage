@@ -77,7 +77,7 @@ predict_me <- read_excel(predict_me_fn) %>%
 file.remove(c(train_fn, predict_me_fn))
 ```
 
-## Basic visualizations 
+## Basic Visualizations 
 
 pH seems to be fairly normally distributed.  After looking at a correlation chart, we might have some colinearity or irrelevent columsn to deal with. With just these two graphics, we should likely test several different goldsmiths and see which works best. 
 
@@ -124,7 +124,7 @@ ph_plot <- ggplot(numeric_data, aes(x = ph)) +
 combined_plot <- ph_plot + cor_plot
 print(combined_plot)
 ```
-## Shiny app: boxpolots
+## Shiny App: Boxpolots
 You can review all the box and whisker plots for each numeric variable via this shiny app. 
 
 ```{r html_link, echo=FALSE, results='asis'}
@@ -132,7 +132,7 @@ cat('<a href="https://afraser.shinyapps.io/shiny/" target="_blank" onclick="wind
 ```
 
 
-# Review multiple models
+# Review Multiple Models
 
 First we'll do some fit and predictions of several common models to see how they perform. And as this shows, Random Forest is the strongest modeling candidate. Please note this is not a complete list of all we tested.
 
