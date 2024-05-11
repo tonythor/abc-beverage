@@ -316,7 +316,7 @@ Not bad, removing those columns and adjusting those hyper parameters made a big 
 ```{r}
 
 updated_model_performance <- data.frame(
-  Model = paste0("RF (if:ntree ", importance_factor,":", n_tree,  ")"),
+  Model = paste0("RF Tuned (if:ntree ", importance_factor,":", n_tree,  ")"),
   RMSE = rfMetrics_updated[1],
   Rsquared = rfMetrics_updated[2],
   MAE = rfMetrics_updated[3]
@@ -349,7 +349,7 @@ ggplot(residuals_df, aes(x = Predicted, y = Residuals)) +
 ```
 
 
-# RF Model 2, with Outliers Removed
+# RF Model 2, Outliers Removed
 Random Forest deals reasonably well with outliers, but let's kick out just a few here to stabilize our model a little more. We'll use an IQR strategy and remove only the furthest out of bounds, the ones that are way way out, like 8X the distance between quartile 1 and quartile 3. 
 
 Randomly dropping records becuase they are outliers is not generally a preferred strategy, but we're already dropping a few records becuase they have null fields. Those might be valid records, we don't know. We also don't know if these records we're dropping are valid or not. We should look into each of them and figure out why, and try to account for that variance some other way.
@@ -414,7 +414,7 @@ rfMetrics_filtered <- postResample(pred = rfPred_filtered, obs = testing_data_fo
 
 # Store performance metrics
 filtered_model_performance <- data.frame(
-  Model = paste0("RF Filtered NoOutliers (if:ntree ", importance_factor, ":", n_tree, ")"),
+  Model = paste0("RF Tuned FilteredOutliers (if:ntree ", importance_factor, ":", n_tree, ")"),
   RMSE = rfMetrics_filtered[1],
   Rsquared = rfMetrics_filtered[2],
   MAE = rfMetrics_filtered[3]
@@ -532,7 +532,7 @@ predict_me_filled$predicted_ph <- round(predicted_ph, 5)
 
 As a last step, we'll save this this predicdtion set as a CSV file. One can expect from this spreadsheet, 267 records, no null fields in any record due to imputation, and a new column called predicted_ph.
 
-```{r persistAsCSV}
+```{r persistAsCSV, message=FALSE, warning=FALSE}
 predict_me_filled %>% ## one last cleanup. 
   mutate_if(is.numeric, round, digits = 5)
   
