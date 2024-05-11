@@ -505,7 +505,7 @@ predict_me_filled$predicted_ph <- round(predicted_ph, 5)
 
 As a last step, we'll save this this predicdtion set as a CSV file. One can expect from this spreadsheet, 267 records, no null fields in any record due to imputation, and a new column called predicted_ph.
 
-```{r persistAsCSV, message=FALSE, warning=FALSE}
+```{r persistAsCSV, message=FALSE, warning=FALSE, results='hide'}
 predict_me_filled %>% ## one last cleanup. 
   mutate_if(is.numeric, round, digits = 5)
   
