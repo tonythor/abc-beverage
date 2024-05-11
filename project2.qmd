@@ -1,5 +1,5 @@
 ---
-title: "ABC Beverage: Predictive pH Factor Modeling"
+title: "ABC Beverage: Predictive pH Factor Predictive Modeling"
 author: "Tony Fraser and Seung-min Song"
 date: "10 May 2024"
 format:
@@ -37,6 +37,9 @@ This project aims to establish a robust predictive model for pH levels in the bo
 * We opted to make predictions with the model including the outliers.(The 69.1% model) This might not be the best prediction strategy, and most industry standards require models performing at 70% or better, but we believe we are makign the correct conservative decision. Predicting using our second model requires consensus and industry experience, neither of which we have. We did however make it a one line adjustment to switch between the 69% and the 97% model should assumptions and logic be approved.
 * There most certainly is feature engineering worth exploring, however we lack both a data dictionary and industry knowledge. Our strongest suggestion before furthering this research is for all parties to gain a better understanding of these columns.
 * Some fields in the training data are empty and we chose to exclude them from model building, e.g., we dropped nulls. Normally the correct coarse of action is to first find out why they are null and decide if they can be dropped or not. If we continue this assignment, this null question needs to be reviewed and decided upon.
+
+## Github Project Location
+[https://github.com/tonythor/abc-beverage](https://github.com/tonythor/abc-beverage)
 
 # Data Overview 
 1. Our training consists of 2,571 entries with 33 columns.
