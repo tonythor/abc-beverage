@@ -408,6 +408,33 @@ modelPerformance <- rbind(modelPerformance, filtered_model_performance)
 print(modelPerformance, row.names = FALSE)
 ```
 
+## Overfitting
+
+The comparison between train and test data indicates that the model generalizes well, maintaining high accuracy on both datasets. The minor drop in 𝑅2 on the test data is expected and does not raise concerns about overfitting, reflecting excellent model performance.
+
+```{r}
+evaluate_model_performance <- function(model, training_data, testing_data) {
+  calc_performance <- function(data, model) {
+    predictions <- predict(model, newdata = data)
+    postResample(pred = predictions, obs = data$y)
+  }
+  
+  train_performance <- calc_performance(training_data, model)
+  test_performance <- calc_performance(testing_data, model)
+  
+  performance <- data.frame(
+    DataSet = c("Training", "Testing"),
+    RMSE = c(train_performance[1], test_performance[1]),
+    Rsquared = c(train_performance[2], test_performance[2]),
+    MAE = c(train_performance[3], test_performance[3])
+  )
+  
+  return(performance)
+}
+
+model_performance <- evaluate_model_performance(rfModel_filtered, training_data_updated, testing_data_for_model)
+print(model_performance)
+```
 
 ## Record Removal Visualization
 
