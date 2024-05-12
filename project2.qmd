@@ -22,33 +22,42 @@ library(tidyr)
 ```
 
 # Executive Summary
-This project aims to establish a robust predictive model for pH levels in the bottling process. We explored several modeling algorithms, some of which we included, but in the end we chose Random Forest using cross-validation because of accuracy and resilience.
+This project aims to establish a robust predictive model for pH levels in the bottling process. We explored several modeling algorithms, some of which we included, but in the end, we chose Random Forest using cross-validation because of accuracy and resilience.
 
 ## Key Outcomes
 * Our best-performing models are:
     1. After only model tuning: Random Forest with an R Squared of 0.6917606.
     2. After discarding the most distant outliers from a conservative range: Random Forest with an R Squared of 0.9763720.
 * Approximately 30% of the columns are either irrelevant or collinear, and were removed.
-* Regarding split, in all tested cases, random forest is most stable with an 80/20 test/train split ratio. 
+* Regarding split, in all tested cases, Random Forest is most stable with an 80/20 test/train split ratio. 
 * In order to predict all 267 records we were asked to predict, we chose to implement a linear regression imputation model to fill out the 675 missing fields. 
 * Our outcome file is called ph_predictions.csv.
 
-## What's Next or Missing
-* We opted to make predictions with the model including the outliers.(The 69.1% model) This might not be the best prediction strategy, and most industry standards require models performing at 70% or better, but we believe we are makign the correct conservative decision. Predicting using our second model requires consensus and industry experience, neither of which we have. We did however make it a one line adjustment to switch between the 69% and the 97% model should assumptions and logic be approved.
-* There most certainly is feature engineering worth exploring, however we lack both a data dictionary and industry knowledge. Our strongest suggestion before furthering this research is for all parties to gain a better understanding of these columns.
-* Some fields in the training data are empty and we chose to exclude them from model building, e.g., we dropped nulls. Normally the correct coarse of action is to first find out why they are null and decide if they can be dropped or not. If we continue this assignment, this null question needs to be reviewed and decided upon.
+## Recommendations
+1. Stabilize factors Mnf Flow, Usage Cont, Temperature, Filler Level, Oxygen Filler, and Carb Rel. These appear to be the most important factors in keeping pH levels stable.
+2. Continue test these models with different groups of data. Update regularly.
+3. Find causes of null fields within records. Either fix the measurement process, or plan how to handle partial records.  
+4. Automate a reporting and warning system, perhaps on a weekly basis. Monitoring metrics like R Squared, and out of bag counts will provide good feedback. 
+5. Build and socialize a data dictionary. Start with the definitions of each variable. Over time, add behaviors as well. This study would have been more comprehensive and accurate if we data scientists knew more about each individual variable.
+6. Look into outlier records. Within this study we've proven we an make considerably more accurate predictions if we can dismiss or smooth outliers.
 
-## Github Project Location
-[https://github.com/tonythor/abc-beverage](https://github.com/tonythor/abc-beverage)
+## What's Next or Missing
+* We opted to make predictions with the model including the outliers. (The 69.1% model) This might not be the best prediction strategy, and most industry standards require models performing at 70% or better, but we believe we are making the correct conservative decision. Predicting using our second model requires consensus and industry experience, neither of which we have. We did however make it a one line adjustment to switch between the 69% and the 97% model should assumptions and logic be approved.
+* There most certainly is feature engineering worth exploring, however we lack both a data dictionary and industry knowledge. Our strongest suggestion before furthering this research is for all parties to gain a better understanding of these columns.
+* Some fields in the training data are empty and we chose to exclude them from model building, e.g., we dropped nulls. Normally the correct course of action is to first find out why they are null and decide if they can be dropped or not. If we continue this assignment, this null question needs to be reviewed and decided upon.
+
+
+## GitHub Project Location
+<a href="https://github.com/tonythor/abc-beverage" target="_blank">https://github.com/tonythor/abc-beverage</a>
 
 # Data Overview 
 1. Our training consists of 2,571 entries with 33 columns.
-2. Our data to predict contains 267 similar records, but with the pH column emptied. We are to predict pH. 
-3. This is not time-series data, just a collection of points measured at the time of bottling.
-4. We built two usable Random Forest models for this study. The first model kept all records and was well tuned. The second model was tuned like the first, but we also removed distant outliers based on a conservative threshold set at five times the interquartile range. In the end, we moreved only 85 outlier records from 1600 training records. 
+2. Our prediction dataset consists of 267 records similar to the training data, but with the pH values removed for us to predict.
+3. This dataset is not time-series data; it comprises discrete measurements taken at the time of bottling.
+4. We built two usable Random Forest models for this study. The first model kept all records and was well tuned. The second model was tuned like the first, but we also removed distant outliers based on a conservative threshold set at five times the interquartile range. In the end, we removed only 85 outlier records from 1600 training records. 
 
 ## Load Data
-We moved data up to github and will load straight from there. Immediately on loading, column names will be cleaned and standardized. No spaces, all lower case, etc.
+We moved data up to github and will load straight from there. Upon loading, we will immediately clean and standardize the column names, removing spaces and converting all to lowercase.
 
 ```{r loadData, message=FALSE, warning=FALSE, results='hide'}
 github_url <- "https://github.com/tonythor/abc-beverage/raw/develop/data/"
@@ -82,7 +91,7 @@ file.remove(c(train_fn, predict_me_fn))
 
 ## Basic Visualizations 
 
-pH seems to be fairly normally distributed.  After looking at a correlation chart, we might have some colinearity or irrelevent columsn to deal with. With just these two graphics, we should likely test several different goldsmiths and see which works best. 
+pH seems to be fairly normally distributed. After looking at a correlation chart, we might have some collinearity or irrelevant columns to deal with. With just these two visuals, we should likely test several different models and see which performs best.
 
 ```{r basicCharts, fig.width=12, fig.height=6, message=FALSE, warning=FALSE}
 numeric_data <- train %>% select_if(is.numeric)
@@ -119,11 +128,9 @@ You can review all the box and whisker plots for each numeric variable via this 
 cat('<a href="https://afraser.shinyapps.io/shiny/" target="_blank" onclick="window.open(\'https://afraser.shinyapps.io/shiny/\', \'newwindow\', \'width=600,height=600\'); return false;">Launch the popup</a> to review individual variable boxplots.')
 ```
 
-
 # Review Multiple Models
 
-First we'll do some fit and predictions of several common models to see how they perform. And as this shows, Random Forest is the strongest modeling candidate. Please note this is not a complete list of all we tested.
-
+First, we'll fit and predict using several common models to evaluate their performance. This analysis demonstrates that Random Forest is the strongest candidate among the models tested. Please note that this is not an exhaustive list of all models we tested.
 
 ```{r modelCompare, , message=FALSE, warning=FALSE}
 
@@ -223,10 +230,10 @@ print(modelPerformance, row.names = FALSE)
 ```
 
 # RF Model 1, and Setup
-Now that we've selected a machine learning algorithm, we'll use this section to set up Random Forest. We'll figure out which columns to keep, how to set our hyper parameters, etc. We will not modify any data for this first model, we're just going to tune the infrastructure best we can. 
+Now that we've selected a machine learning algorithm, we'll use this section to set up the Random Forest model. We'll figure out which columns to keep, how to set our hyperparameters, etc. We will not modify any data for this first model; instead, we will focus on optimizing the infrastructure as effectively as possible.
 
 ## Feature Importance
-First, let's get a handle on which features seem the most important. We should see some of these less important columns later when we start removing unimprtant factors. 
+First, let's get a handle on which features seem the most important. We should see some of these less important columns later when we start removing unimportant factors.
 
 ```{r expandRandomForest, message=FALSE, warning=FALSE}
 importance_measures <- varImp(rfModel, scale = TRUE)
@@ -234,9 +241,9 @@ plot(importance_measures, main = "Feature Importance in Random Forest Model")
 ```
 ## Build Model and Remove Columns
 
-Some of these less important columns confuse the model. Before we refit this model, we'll set an importance threshold to help us get rid of all those columns. Then, we'll build a new model, refit, and see how well it performs. 
+Some of the less important columns can confuse the model. Before we refit this model, we'll set an importance threshold to selectively remove those columns that are less impactful. Then, we'll either refine our existing model or build a completely new one, refit, and evaluate its performance.
 
-As you'll see at the end, not bad. We're over 69%. If we were rounding up, it'd be good enough. 
+As you'll see in the results, the performance isn't bad. We've achieved over 69%. If we were to round up, it would be considered good enough.
 
 ```{r rfRemoveColumms, message=FALSE, warning=FALSE, results='hide'}
 # clean and type and flatten
@@ -293,6 +300,7 @@ print(variables_to_remove) #<- columns we removed before retraining
  
 ## Model 1 Performance
 Let us now take a quick look at this last run and see how much better it performs. 
+
 Not bad, removing those columns and adjusting those hyper parameters made a big difference. 
 
 ```{r}
@@ -313,11 +321,11 @@ print(variables_to_remove) #<- columns we removed before retraining
 
 ```
 
-## Redsiduals Plot Review
+## Residuals Plot Review
 
-This chart shows the differences between the pH we predicted in model 1, and the actual pH from the data set. Residual points appear randomly distributed around the zero line, which is ideal. This suggests that the model does not suffer from non-constant variance. As well, there are no apparent patterns or trends in the residuals, which implies that the linearity between predictors and target is reasonably satisfied.  
+This chart shows the differences between the pH we predicted in model 1 and the actual pH from the dataset. Residual points appear randomly distributed around the zero line, which is ideal. This suggests that the model exhibits homoscedasticity, meaning it does not suffer from non-constant variance. Also, there are no apparent patterns or trends in the residuals, which implies that the linearity between predictors and target is reasonably satisfied.
 
-There are some outliers though. 
+However, there are some outliers that we need to address.
 
 ```{r residualsPlot}
 predictions <- predict(rfModel_updated, newdata = predictor_data_for_model)
@@ -330,13 +338,12 @@ ggplot(residuals_df, aes(x = Predicted, y = Residuals)) +
   labs(title = "Residual Plot", x = "Predicted Values", y = "Residuals")
 ```
 
-
 # RF Model 2, Outliers Removed
-Random Forest deals reasonably well with outliers, but let's kick out just a few here to stabilize our model a little more. We'll use an IQR strategy and remove only the furthest out of bounds, the ones that are way way out, like 8X the distance between quartile 1 and quartile 3. 
+Random Forest deals reasonably well with outliers, but let's kick out just a few here to stabilize our model a little more. We'll use an IQR strategy to remove only those outliers that are extremely distant, specifically those exceeding 8 times the distance between the first and third quartiles.
 
-Randomly dropping records becuase they are outliers is not generally a preferred strategy, but we're already dropping a few records becuase they have null fields. Those might be valid records, we don't know. We also don't know if these records we're dropping are valid or not. We should look into each of them and figure out why, and try to account for that variance some other way.
+Randomly dropping records because they are outliers is not generally a preferred strategy, but we're already dropping a few records because they have null fields. These might be valid records; we simply don't know whether the records we're dropping are valid or not. We should look into each of them to figure out why, and try to account for that variance in some other way.
 
-From a process perspective, let's use our previous test/train split with unimportant columns removed. All we'll do is remove a few of the most records furthest from the mean. 
+From a process perspective, let's use our previous test/train split with unimportant columns removed. All we'll do is remove a few of the records furthest from the mean.
 
 And obviously, this drastically stabilized the model as our performance table below shows.
 
@@ -410,7 +417,9 @@ print(modelPerformance, row.names = FALSE)
 
 ## Overfitting
 
-The comparison between train and test data indicates that the model generalizes well, maintaining high accuracy on both datasets. The minor drop in 𝑅2 on the test data is expected and does not raise concerns about overfitting, reflecting excellent model performance.
+The comparison between train and test data indicates that the model generalizes well, maintaining high accuracy on both datasets. The minor drop in R Squared on the test data is expected and does not raise concerns about overfitting, reflecting excellent model performance.
+
+However, despite the model's strong performance and lack of overfitting issues, we still have reservations about the potential arbitrariness of forcefully dropping records that may or may not be outliers.
 
 ```{r}
 evaluate_model_performance <- function(model, training_data, testing_data) {
@@ -464,17 +473,15 @@ ggplot(counts_data, aes(x = Stage, y = Count, fill = Dataset)) +
   geom_text(aes(label = Count, group = Dataset), position = position_dodge(width = 0.9), vjust = -0.25)
 
 ```
-
 # Predictions
 
-We'll predict from model 1. Removing outliers makes good fits and charts and such, but it might be too heavy handed. That should be a choice by the staekholders. 
+We'll use Model 1 for predictions. Although removing outliers can improve fits and visualizations, it may be too aggressive. This decision should ultimately rest with the stakeholders.
 
-To predict, we'll fist impute missing data, 
-We'll follow the steps of first imputing missing data, then predicting, then writing a csv file. 
+To predict, we will first impute missing data, then proceed to predict pH levels, and finally, write the results to a CSV file.
 
 ## Imputation
 
-Before we can predict, we need to do something with the missing fields from the data set we are to predict ph for. We'll use a simple linear regression model to estimate all those missing fields. 
+Before predicting, we must address the missing fields in the dataset for which we are to predict pH levels. We'll use a simple linear regression model to estimate these missing fields.
 
 ```{r lrImputeMethod, message=FALSE, warning=FALSE}
 
